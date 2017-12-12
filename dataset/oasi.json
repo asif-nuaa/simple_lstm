@@ -1,0 +1,262 @@
+{
+  "columns": [
+    {
+      "col_index": 0,
+      "name": "timestamps",
+      "type": "time",
+      "normalize": false
+    },
+    {
+      "col_index": 1,
+      "name": "Chiasso_610 02 06_NO",
+      "type": "feature",
+      "normalize": true
+    },
+    {
+      "col_index": 2,
+      "name": "Chiasso_610 02 06_NO2",
+      "type": "feature",
+      "normalize": true
+    },
+    {
+      "col_index": 3,
+      "name": "Chiasso_610 02 06_NOx",
+      "type": "feature",
+      "normalize": true
+    },
+    {
+      "col_index": 4,
+      "name": "Chiasso_610 02 06_O3",
+      "type": "feature",
+      "normalize": true
+    },
+    {
+      "col_index": 5,
+      "name": "Chiasso_610 02 06_PM10",
+      "type": "target",
+      "normalize": true
+    },
+    {
+      "col_index": 6,
+      "name": "Chiasso_610 02 06_PM2.5",
+      "type": "target",
+      "normalize": true
+    },
+    {
+      "col_index": 7,
+      "name": "Stabio_626 01 01_NO2",
+      "type": "feature",
+      "normalize": true
+    },
+    {
+      "col_index": 8,
+      "name": "Stabio_626 01 01_O3",
+      "type": "feature",
+      "normalize": true
+    },
+    {
+      "col_index": 9,
+      "name": "Stabio_16_Gl",
+      "type": "feature",
+      "normalize": true
+    },
+    {
+      "col_index": 10,
+      "name": "Mendrisio_27_P",
+      "type": "feature",
+      "normalize": true
+    },
+    {
+      "col_index": 11,
+      "name": "Stabio_16_P",
+      "type": "feature",
+      "normalize": true
+    },
+    {
+      "col_index": 12,
+      "name": "Mendrisio_27_Prec",
+      "type": "feature",
+      "normalize": true
+    },
+    {
+      "col_index": 13,
+      "name": "Stabio_16_Prec",
+      "type": "feature",
+      "normalize": true
+    },
+    {
+      "col_index": 14,
+      "name": "Mendrisio_27_RH",
+      "type": "feature",
+      "normalize": true
+    },
+    {
+      "col_index": 15,
+      "name": "Stabio_16_RH",
+      "type": "feature",
+      "normalize": true
+    },
+    {
+      "col_index": 16,
+      "name": "Mendrisio_27_T",
+      "type": "feature",
+      "normalize": true
+    },
+    {
+      "col_index": 17,
+      "name": "Stabio_16_T_2m",
+      "type": "feature",
+      "normalize": true
+    },
+    {
+      "col_index": 18,
+      "name": "Stabio_16_T_5cm",
+      "type": "feature",
+      "normalize": true
+    },
+    {
+      "col_index": 19,
+      "name": "Mendrisio_27_Tdew",
+      "type": "feature",
+      "normalize": true
+    },
+    {
+      "col_index": 20,
+      "name": "Stabio_16_Tdew",
+      "type": "feature",
+      "normalize": true
+    },
+    {
+      "col_index": 21,
+      "name": "Mendrisio_27_WDvect",
+      "type": "feature",
+      "normalize": true
+    },
+    {
+      "col_index": 22,
+      "name": "Stabio_16_WDvect",
+      "type": "feature",
+      "normalize": true
+    },
+    {
+      "col_index": 23,
+      "name": "Mendrisio_27_WSgust",
+      "type": "feature",
+      "normalize": true
+    },
+    {
+      "col_index": 24,
+      "name": "Stabio_16_WSgust",
+      "type": "feature",
+      "normalize": true
+    },
+    {
+      "col_index": 25,
+      "name": "Mendrisio_27_WSvect",
+      "type": "feature",
+      "normalize": true
+    },
+    {
+      "col_index": 26,
+      "name": "Stabio_16_WSvect",
+      "type": "feature",
+      "normalize": true
+    },
+    {
+      "col_index": 27,
+      "name": "Chiasso_auto_283_P",
+      "type": "feature",
+      "normalize": true
+    },
+    {
+      "col_index": 28,
+      "name": "Chiasso_auto_283_Prec",
+      "type": "feature",
+      "normalize": true
+    },
+    {
+      "col_index": 29,
+      "name": "Sagno_auto_381_Prec",
+      "type": "feature",
+      "normalize": true
+    },
+    {
+      "col_index": 30,
+      "name": "Chiasso_auto_283_RH",
+      "type": "feature",
+      "normalize": true
+    },
+    {
+      "col_index": 31,
+      "name": "Sagno_auto_381_RH",
+      "type": "feature",
+      "normalize": true
+    },
+    {
+      "col_index": 32,
+      "name": "Chiasso_auto_283_T",
+      "type": "feature",
+      "normalize": true
+    },
+    {
+      "col_index": 33,
+      "name": "Sagno_auto_381_T_mhstaz",
+      "type": "feature",
+      "normalize": true
+    },
+    {
+      "col_index": 34,
+      "name": "Sagno_auto_381_T_mhstaz",
+      "type": "feature",
+      "normalize": true
+    },
+    {
+      "col_index": 35,
+      "name": "Chiasso_auto_283_WD",
+      "type": "feature",
+      "normalize": true
+    },
+    {
+      "col_index": 36,
+      "name": "Sagno_auto_381_WD",
+      "type": "feature",
+      "normalize": true
+    },
+    {
+      "col_index": 37,
+      "name": "Chiasso_auto_283_WS",
+      "type": "feature",
+      "normalize": true
+    },
+    {
+      "col_index": 38,
+      "name": "Sagno_auto_381_WS",
+      "type": "feature",
+      "normalize": true
+    },
+    {
+      "col_index": 39,
+      "name": "Chiasso_auto_283_WSgust",
+      "type": "feature",
+      "normalize": true
+    },
+    {
+      "col_index": 40,
+      "name": "Sagno_auto_381_WSgust",
+      "type": "feature",
+      "normalize": true
+    },
+    {
+      "col_index": 41,
+      "name": "Sagno_auto_381_P",
+      "type": "feature",
+      "normalize": true
+    },
+    {
+      "col_index": 42,
+      "name": "Chiasso_610 02 06_T",
+      "type": "feature",
+      "normalize": true
+    }
+  ]
+}

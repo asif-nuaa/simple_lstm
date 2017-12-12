@@ -1,24 +1,64 @@
+import json
 import os
-from datetime import datetime
+from enum import Enum
+from typing import List
 
 import numpy as np
 import pandas
 from keras import Sequential
 from keras.layers import LSTM, Dense, RepeatVector, TimeDistributed, Activation
+from matplotlib import gridspec as grid
 from matplotlib import pylab as plt
 from sklearn.metrics import mean_squared_error
 from sklearn.preprocessing import MinMaxScaler
+
+
+class ColumnType(Enum):
+    TIME = 0
+    FEATURE = 1
+    TARGET = 2
+
+
+class CsvColumn:
+    def __init__(self, col_index, name, type, normalize):
+        self.col_index = col_index  # type: int
+        self.name = name  # type: str
+        self.type = ColumnType[type.upper()]  # type: ColumnType
+        self.normalize = normalize  # type: bool
+
+    def __repr__(self):
+        s = "{:>2}) {:<25} {:>7} {:^6} normalize".format(
+            self.col_index, self.name, self.type.name,
+            "do" if self.normalize else "do not")
+        return s
+
+
+CsvColumnList = List[CsvColumn]
+
+
+def load_meta_data(json_path: str) -> CsvColumnList:
+    with open(json_path, 'r') as json_file:
+        json_dict = json.load(json_file)
+
+    column_list = []  # type: CsvColumnList
+    for column_dict in json_dict["columns"]:
+        column = CsvColumn(**column_dict)
+        column_list.append(column)
+
+    return sorted(column_list, key=lambda x: x.col_index)
 
 
 class SimpleLSTM:
     def __init__(self):
 
         # Data
-        self.use_csv_file = False
+        self.use_csv_file = True
         self.dataframe = None  # type: np.ndarray
         self.timestamp = None  # type: np.ndarray
 
+        self.feature_indices = None  # type: list
         self.feature_names = None  # type: list
+        self.target_indices = None  # type: list
         self.target_names = None  # type: list
 
         # Preprocessing
@@ -48,10 +88,15 @@ class SimpleLSTM:
         else:
             self.create_data()
 
+        print("Raw data shapes:"
+              "\nFeatures: {} (observations, num features)"
+              "\nTargets:  {} (observations, num targets".format(
+            self.features.shape, self.targets.shape))
+
+        # Preprocess the data by scaling, smoothing and shifting.
         self.preprocess_data()
 
-        self.plot_dataframe(timestamp=self.timestamp,
-                            features=self.features, targets=self.targets,
+        self.plot_dataframe(features=self.features, targets=self.targets,
                             feature_names=self.feature_names,
                             target_names=self.target_names)
 
@@ -59,11 +104,12 @@ class SimpleLSTM:
                                            look_back=self.look_back,
                                            look_front=self.look_front)
 
-        print("Data shapes:"
+        print("Supervised data shapes:"
               "\nX: {} (batch, window size, num features),"
               "\nY: {} (batch, prediction window size, num features)".format(
             X.shape, Y.shape))
 
+        # Split the data into train test.
         self.train_x, self.train_y, self.test_x, self.test_y = self.train_test_split(
             features=X, targets=Y, train_fraction=0.7)
 
@@ -75,6 +121,7 @@ class SimpleLSTM:
               "\n\tFeatures: {}"
               "\n\tTargets:  {}".format(self.test_x.shape, self.test_y.shape))
 
+        # Create a learning model and train in on the train data.
         self.model = Sequential()
         self.model.add(LSTM(units=self.units[0],
                             input_shape=(self.look_back, self.features.shape[1]),
@@ -137,24 +184,51 @@ class SimpleLSTM:
 
         cur_dir = os.path.dirname(os.path.realpath(__file__))
         dataset_dir = os.path.join(cur_dir, "dataset")
+        meta_data_file_name = os.path.join(dataset_dir, "data_clean.json")
+        meta_data = load_meta_data(json_path=meta_data_file_name)
+
         dataset_file_name = os.path.join(dataset_dir, "data_clean.csv")
+        self.dataframe = pandas.read_csv(
+            dataset_file_name, delimiter=",", index_col=False,
+            usecols=[meta.col_index for meta in meta_data])
 
-        self.dataframe = pandas.read_csv(dataset_file_name, delimiter=",",
-                                         index_col=False)
+        # Drop all columns which have too many nans.
+        nan_fraction_accepted = 0.1
+        num_nans_accepted = int(nan_fraction_accepted * self.dataframe.shape[0])
+        drop_col_indices = []
+        for col_index, col in enumerate(self.dataframe.columns):
+            num_nans = np.count_nonzero(self.dataframe[col].isnull())
+            if num_nans > num_nans_accepted:
+                drop_col_indices.append(col_index)
+                print("Ignoring feature {} as there are too many 'nan's".format(col))
 
-        # Create timestamp information
-        time_values = self.dataframe.values[:, 0:4].astype(np.int32).copy()
-        self.dataframe.drop(labels=self.dataframe.columns[list(range(0, 4))],
-                            inplace=True, axis=1)
+        meta_data = [meta for meta in meta_data if meta.col_index not in drop_col_indices]
+        self.dataframe.drop(self.dataframe.columns[drop_col_indices],
+                            axis=1, inplace=True)
 
-        self.timestamp = np.array([datetime(y, m, d, h) for y, m, d, h in time_values])
+        # Drop all rows which still contain a nan.
+        self.dataframe.dropna(inplace=True)
+
+        # Reorder columns inside the dataframe.
+        time_name = [meta.name for meta in meta_data
+                     if meta.type == ColumnType.TIME][0]
 
         # Rename and reorder dataframe columns
-        self.feature_names = self.dataframe.columns[:-1]
-        self.target_names = [self.dataframe.columns[-1]]
-        self.dataframe.columns = [*self.feature_names, *self.target_names]
+        self.feature_names = [meta.name for meta in meta_data
+                              if meta.type == ColumnType.FEATURE]
 
-        print(self.dataframe.head(n=10))
+        self.target_names = [meta.name for meta in meta_data
+                             if meta.type == ColumnType.TARGET]
+
+        self.dataframe = self.dataframe[
+            [time_name, *self.feature_names, *self.target_names]]
+
+        self.timestamp = self.dataframe.values[:, 0].copy()
+        self.dataframe.drop(labels=self.dataframe.columns[0], inplace=True, axis=1)
+
+        self.feature_indices = [i for i in range(len(self.feature_names))]
+        self.target_indices = [i + self.feature_indices[-1] + 1
+                               for i in range(len(self.target_names))]
 
         # Preprocess features
         self.dataframe = self.dataframe.values.astype(np.float32)
@@ -208,26 +282,53 @@ class SimpleLSTM:
 
         self.prepare_feature_transformer()
         self.prepare_target_transformer()
+
         self.features = self.transform_features(self.features)
         self.targets = self.transform_targets(self.targets)
 
     @staticmethod
     def create_supervised_data(features: np.ndarray, targets: np.ndarray,
                                look_back: int, look_front: int) -> tuple:
-        X = []
-        Y = []
+        """
+        Creates a supervised representation of the data, i.e. a three dimensional array with the following dimensions:
+        X.shape = (num_supervised_samples, look_back, num_features)
+        Y.shape = (num_supervised_samples, look_front, num_targets)
+
+        :param features: Numpy array (2D) of raw features (each row corresponds to one
+        single time measurement)
+        :param targets: Numpy array (2D) of raw targets (each row corresponds to one
+        single time measurement)
+        :param look_back: Number of steps to look back (memory) in the features set.
+        :param look_front: Number of steps to look front (predict) in the target set.
+        :return: A redundant supervised representation of the input data.
+        """
+        X = []  # type: list
+        Y = []  # type: list
+
+        # Need 2-dimensional data as input.
+        assert (len(features.shape) == len(targets.shape) == 2)
 
         num_samples = features.shape[0]
+        assert (num_samples == targets.shape[0])
+
+        # Move a window of size look_back over the features predicting a successive
+        # window of size look_front in the targets.
         for i in range(num_samples - look_back - look_front):
             X.append(features[i:i + look_back, :])
             Y.append(targets[i + look_back:i + look_back + look_front, :])
 
+        # Vectorize the data.
         X = np.array(X)
         Y = np.array(Y)
+
+        # Handle the case where either the features or the targets are one dimensional
+        # (add a new dimension as the slices created in the sliding window are only one
+        #  dimensional if there is a single dimension in the feature/target).
         if len(X.shape) == 2:
             X = X[:, :, np.newaxis]
         if len(Y.shape) == 2:
             Y = Y[:, :, np.newaxis]
+
         return X, Y
 
     @staticmethod
@@ -248,28 +349,49 @@ class SimpleLSTM:
         return sequential_target.reshape(-1, 1)
 
     @staticmethod
-    def plot_dataframe(timestamp: np.ndarray, features: np.ndarray, targets: np.ndarray,
+    def plot_dataframe(features: np.ndarray, targets: np.ndarray,
                        feature_names: list, target_names: list):
-        f = plt.figure(0)
+
         num_features = features.shape[1]
         num_targets = targets.shape[1]
-        num_plots = num_features + num_targets
+        num_subplots = num_features + num_targets
+        num_cols = max(num_subplots // 5, 2)
+        num_rows = int(num_subplots // num_cols) + 1
+
+        plot_height = 2.5
+        plot_width = 4
+        fig_size = (plot_width * num_cols, plot_height * num_rows)
+
+        fig = plt.figure(figsize=fig_size)
+        gs = grid.GridSpec(num_rows, num_cols)
+
+        # Remove the ticks to allow more space in the plot.
+        ticks_params = {'labelbottom': 'off', 'labelleft': 'off'}
 
         # Plot features
-        for ax_index, (feature, feature_name) in enumerate(zip(features.T,
-                                                               feature_names)):
-            ax = f.add_subplot(int(num_plots / 2 + 0.5), 2, ax_index + 1)
-            # Feature
-            ax.plot(timestamp, feature, label=feature_name)
-            ax.legend(loc=1)
+        for ax_index, (feature, feature_name) in enumerate(
+                zip(features.T, feature_names)):
+            print("plotting - {}/{} - {}({})".format(ax_index + 1, len(feature_names),
+                                                     feature_name, feature.shape))
 
+            ax = fig.add_subplot(gs[ax_index])  # type: plt.Axes
+            ax.tick_params(**ticks_params)
+            # Feature
+            ax.plot(feature)
+            ax.set_title(feature_name)
+
+        print("Plotting targets")
         # Plot targets
         for ax_index, (target, target_name) in enumerate(zip(targets.T, target_names)):
-            ax = f.add_subplot(int(num_plots / 2 + 0.5), 2, num_features + 1 + ax_index)
-            ax.plot(timestamp, target, label=target_name, color="red")
-            ax.legend(loc=1)
+            print("plotting - {}/{} - {}({})".format(ax_index + 1, len(feature_names),
+                                                     target_name, target.shape))
+            ax = fig.add_subplot(gs[ax_index + num_features])  # type: plt.Axes
+            ax.tick_params(**ticks_params)
+            ax.plot(target, color="red")
+            ax.set_title(target_name)
 
-        f.tight_layout()
+        fig.suptitle("Input dataset (blue: feature, red: target)")
+        gs.tight_layout(fig, rect=[0.01, 0, 0.99, 0.95])
         plt.show()
 
     def prepare_feature_transformer(self):
@@ -294,16 +416,16 @@ class SimpleLSTM:
 
     @property
     def features(self) -> np.ndarray:
-        return np.atleast_2d(self.dataframe[:, :-1])
+        return np.atleast_2d(self.dataframe[:, self.feature_indices])
 
     @features.setter
     def features(self, f: np.ndarray):
         assert (f.shape == self.features.shape)
-        self.dataframe[:, :-1] = f
+        self.dataframe[:, self.feature_indices] = f
 
     @property
     def targets(self) -> np.ndarray:
-        t = np.atleast_2d(self.dataframe[:, -1])
+        t = np.atleast_2d(self.dataframe[:, self.target_indices])
         if t.shape[0] == 1:
             t = t.T
         return t
@@ -312,18 +434,22 @@ class SimpleLSTM:
     def targets(self, t: np.ndarray):
         t = np.atleast_2d(t)
         assert (t.shape == self.targets.shape)
-        self.dataframe[:, -1] = np.squeeze(t)
+        self.dataframe[:, self.target_indices] = t
 
     @staticmethod
     def train_test_split(features: np.ndarray, targets: np.ndarray,
                          train_fraction: float) -> tuple:
 
+        assert (features.shape[0] == targets.shape[0])
+
         num_samples = features.shape[0]
         num_train_samples = int(np.round(train_fraction * num_samples))
 
+        # Keep the first num_train_samples as training samples.
         train_x = features[:num_train_samples]
         train_y = targets[:num_train_samples]
 
+        # The remaining samples for testing.
         test_x = features[num_train_samples:]
         test_y = targets[num_train_samples:]
 
