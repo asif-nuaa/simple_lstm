@@ -5,7 +5,7 @@ from typing import List
 
 import numpy as np
 import pandas
-from keras import Sequential
+from keras.models import Sequential
 from keras.layers import LSTM, Dense, RepeatVector, TimeDistributed, Activation
 from matplotlib import gridspec as grid
 from matplotlib import pylab as plt
