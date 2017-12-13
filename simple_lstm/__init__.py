@@ -1,6 +1,7 @@
 import os
 
-from .dataset import DatasetLoader
+from .dataset import Dataset
+from .loader import DatasetLoader
 
 
 class __Settings:

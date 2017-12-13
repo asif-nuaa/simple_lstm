@@ -11,7 +11,7 @@ from matplotlib import pylab as plt
 from sklearn.metrics import mean_squared_error
 from sklearn.preprocessing import MinMaxScaler
 
-from simple_lstm import Settings, DatasetLoader
+from simple_lstm import Settings, DatasetLoader, Dataset
 
 
 class SimpleLSTM:
@@ -19,7 +19,7 @@ class SimpleLSTM:
 
         # Data
         self.use_csv_file = True
-        self.dataset = None  # type: DatasetLoader
+        self.dataset = None  # type: Dataset
 
         self.csv_path = os.path.join(Settings.dataset_root, "data_clean.csv")
         self.meta_data_path = os.path.join(Settings.dataset_root, "data_clean.json")
@@ -47,10 +47,11 @@ class SimpleLSTM:
 
     def run(self):
         if self.use_csv_file:
-            self.dataset = DatasetLoader(csv_path=self.csv_path,
-                                         meta_data_path=self.meta_data_path)
+            dataset_loader = DatasetLoader(csv_path=self.csv_path,
+                                           meta_data_path=self.meta_data_path)
+            self.dataset = dataset_loader.load()
         else:
-            self.create_data()
+            self.dataset = self.create_data()
 
         print("Raw data shapes:"
               "\nFeatures: {} (observations, num features)"
