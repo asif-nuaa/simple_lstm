@@ -21,8 +21,8 @@ class SimpleLSTM:
         self.use_csv_file = True
         self.dataset = None  # type: Dataset
 
-        self.csv_path = os.path.join(Settings.dataset_root, "data_clean.csv")
-        self.meta_data_path = os.path.join(Settings.dataset_root, "data_clean.json")
+        self.csv_path = os.path.join(Settings.dataset_root, "oasi.csv")
+        self.meta_data_path = os.path.join(Settings.dataset_root, "oasi.json")
 
         # Preprocessing
         self.feature_transformer = None  # type: MinMaxScaler
@@ -31,10 +31,10 @@ class SimpleLSTM:
 
         # Model
         self.model = None  # type: Sequential
-        self.units = [16, 8]
+        self.units = [128, 128]
 
-        self.look_back = 200
-        self.look_front = 10
+        self.look_back = 2 * 24 * 2
+        self.look_front = 1 * 24 * 2
 
         # Training
         self.num_epochs = 50
