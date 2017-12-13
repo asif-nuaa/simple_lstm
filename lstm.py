@@ -5,6 +5,8 @@ from typing import List
 
 import numpy as np
 import pandas
+# Make sure to use CPU only version, as for LSTM networks it is faster than GPU based.
+os.environ['CUDA_VISIBLE_DEVICES'] = '-1'
 from keras.models import Sequential
 from keras.layers import LSTM, Dense, RepeatVector, TimeDistributed, Activation
 from matplotlib import gridspec as grid
@@ -184,10 +186,10 @@ class SimpleLSTM:
 
         cur_dir = os.path.dirname(os.path.realpath(__file__))
         dataset_dir = os.path.join(cur_dir, "dataset")
-        meta_data_file_name = os.path.join(dataset_dir, "data_clean.json")
+        meta_data_file_name = os.path.join(dataset_dir, "oasi.json")
         meta_data = load_meta_data(json_path=meta_data_file_name)
 
-        dataset_file_name = os.path.join(dataset_dir, "data_clean.csv")
+        dataset_file_name = os.path.join(dataset_dir, "oasi.csv")
         self.dataframe = pandas.read_csv(
             dataset_file_name, delimiter=",", index_col=False,
             usecols=[meta.col_index for meta in meta_data])
