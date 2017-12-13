@@ -31,13 +31,15 @@ class SimpleLSTM:
 
         # Model
         self.model = None  # type: Sequential
-        self.units = [128, 256]
+
+        self.encoding_units = [128, 16]
+        self.decoding_units = [64]
 
         self.look_back = 2 * 24 * 2
         self.look_front = 1 * 24 * 2
 
         # Training
-        self.num_epochs = 50
+        self.num_epochs = 1
         self.batch_size = 32
 
         self.train_x = None  # type: np.ndarray
@@ -89,27 +91,50 @@ class SimpleLSTM:
 
         # Create a learning model and train in on the train data.
 
-        print("Units: {}".format(self.units))
+        print("Encoding units: {}".format(self.encoding_units))
+        print("Decoding units: {}".format(self.decoding_units))
         print("Look back: {}".format(self.look_back))
         print("Features in: {}".format(self.dataset.targets.shape[1]))
         print("Look front: {}".format(self.look_front))
         print("Features out: {}".format(self.dataset.targets.shape[1]))
 
         self.model = Sequential()
-        self.model.add(LSTM(units=self.units[0],
-                            input_shape=(self.look_back, self.dataset.features.shape[1]),
-                            return_sequences=False))  # shape: (None, self.units[0])
 
+        # Encoder
+        if len(self.encoding_units) == 1:
+            self.model.add(LSTM(units=self.encoding_units[0],
+                                input_shape=(
+                                    self.look_back, self.dataset.features.shape[1]),
+                                return_sequences=False))
+            # shape: (None, self.encoding_units[0])
+        else:
+            self.model.add(LSTM(units=self.encoding_units[0],
+                                input_shape=(
+                                    self.look_back, self.dataset.features.shape[1]),
+                                return_sequences=True))
+            # shape: (None, look_back, self.encoding_units[0])
+
+            for units in self.encoding_units[1:-1]:
+                self.model.add(LSTM(units=units, return_sequences=True))
+                # shape: (None, look_back, units)
+
+            self.model.add(LSTM(units=self.encoding_units[-1], return_sequences=False))
+            # shape: (None, self.encoding_units[-1])
+
+        # Bridge between encoder and decoder.
         self.model.add(RepeatVector(self.look_front))
-        # shape: (None, self.look_front, self.units[0])
+        # shape: (None, self.look_front, self.encoding_units[-1])
 
-        self.model.add(LSTM(units=self.units[1], return_sequences=True))
-        # shape: (None, self.look_front, self.units[1])
+        # Decoder.
+        for units in self.decoding_units:
+            self.model.add(LSTM(units=units, return_sequences=True))
+            # shape: (None, self.look_front, units)
 
+        # Readout layers (apply the same dense layer to all self.look_front matrices
+        # coming from the previous layer).
         self.model.add(TimeDistributed(Dense(self.dataset.targets.shape[1])))
         # shape: (None, self.dataset.targets.shape[1])
 
-        self.model.add(Activation('linear'))
 
         self.model.compile(loss='mse', optimizer='adam')
 
@@ -280,7 +305,6 @@ class SimpleLSTM:
     @staticmethod
     def plot_dataframe(features: np.ndarray, targets: np.ndarray,
                        feature_names: list, target_names: list):
-
         num_features = features.shape[1]
         num_targets = targets.shape[1]
         num_subplots = num_features + num_targets
@@ -346,7 +370,6 @@ class SimpleLSTM:
     @staticmethod
     def train_test_split(features: np.ndarray, targets: np.ndarray,
                          train_fraction: float) -> tuple:
-
         assert (features.shape[0] == targets.shape[0])
 
         num_samples = features.shape[0]
