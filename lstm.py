@@ -1,10 +1,7 @@
-import json
 import os
-from enum import Enum
-from typing import List
 
 import numpy as np
-import pandas
+
 # Make sure to use CPU only version, as for LSTM networks it is faster than GPU based.
 os.environ['CUDA_VISIBLE_DEVICES'] = '-1'
 from keras.models import Sequential
@@ -14,40 +11,7 @@ from matplotlib import pylab as plt
 from sklearn.metrics import mean_squared_error
 from sklearn.preprocessing import MinMaxScaler
 
-
-class ColumnType(Enum):
-    TIME = 0
-    FEATURE = 1
-    TARGET = 2
-
-
-class CsvColumn:
-    def __init__(self, col_index, name, type, normalize):
-        self.col_index = col_index  # type: int
-        self.name = name  # type: str
-        self.type = ColumnType[type.upper()]  # type: ColumnType
-        self.normalize = normalize  # type: bool
-
-    def __repr__(self):
-        s = "{:>2}) {:<25} {:>7} {:^6} normalize".format(
-            self.col_index, self.name, self.type.name,
-            "do" if self.normalize else "do not")
-        return s
-
-
-CsvColumnList = List[CsvColumn]
-
-
-def load_meta_data(json_path: str) -> CsvColumnList:
-    with open(json_path, 'r') as json_file:
-        json_dict = json.load(json_file)
-
-    column_list = []  # type: CsvColumnList
-    for column_dict in json_dict["columns"]:
-        column = CsvColumn(**column_dict)
-        column_list.append(column)
-
-    return sorted(column_list, key=lambda x: x.col_index)
+from simple_lstm import Settings, DatasetLoader
 
 
 class SimpleLSTM:
@@ -55,13 +19,10 @@ class SimpleLSTM:
 
         # Data
         self.use_csv_file = True
-        self.dataframe = None  # type: np.ndarray
-        self.timestamp = None  # type: np.ndarray
+        self.dataset = None  # type: DatasetLoader
 
-        self.feature_indices = None  # type: list
-        self.feature_names = None  # type: list
-        self.target_indices = None  # type: list
-        self.target_names = None  # type: list
+        self.csv_path = os.path.join(Settings.dataset_root, "data_clean.csv")
+        self.meta_data_path = os.path.join(Settings.dataset_root, "data_clean.json")
 
         # Preprocessing
         self.feature_transformer = None  # type: MinMaxScaler
@@ -86,23 +47,25 @@ class SimpleLSTM:
 
     def run(self):
         if self.use_csv_file:
-            self.load_csv_data()
+            self.dataset = DatasetLoader(csv_path=self.csv_path,
+                                         meta_data_path=self.meta_data_path)
         else:
             self.create_data()
 
         print("Raw data shapes:"
               "\nFeatures: {} (observations, num features)"
               "\nTargets:  {} (observations, num targets".format(
-            self.features.shape, self.targets.shape))
+            self.dataset.features.shape, self.dataset.targets.shape))
 
         # Preprocess the data by scaling, smoothing and shifting.
         self.preprocess_data()
 
-        self.plot_dataframe(features=self.features, targets=self.targets,
-                            feature_names=self.feature_names,
-                            target_names=self.target_names)
+        self.plot_dataframe(features=self.dataset.features, targets=self.dataset.targets,
+                            feature_names=self.dataset.feature_names,
+                            target_names=self.dataset.target_names)
 
-        X, Y = self.create_supervised_data(features=self.features, targets=self.targets,
+        X, Y = self.create_supervised_data(features=self.dataset.features,
+                                           targets=self.dataset.targets,
                                            look_back=self.look_back,
                                            look_front=self.look_front)
 
@@ -126,12 +89,12 @@ class SimpleLSTM:
         # Create a learning model and train in on the train data.
         self.model = Sequential()
         self.model.add(LSTM(units=self.units[0],
-                            input_shape=(self.look_back, self.features.shape[1]),
+                            input_shape=(self.look_back, self.dataset.features.shape[1]),
                             return_sequences=False))
 
         self.model.add(RepeatVector(self.look_front))
         self.model.add(LSTM(units=self.units[1], return_sequences=True))
-        self.model.add(TimeDistributed(Dense(self.targets.shape[1])))
+        self.model.add(TimeDistributed(Dense(self.dataset.targets.shape[1])))
         self.model.add(Activation('linear'))
 
         self.model.compile(loss='mae', optimizer='adam')
@@ -182,60 +145,8 @@ class SimpleLSTM:
         plt.legend()
         plt.show()
 
-    def load_csv_data(self):
-
-        cur_dir = os.path.dirname(os.path.realpath(__file__))
-        dataset_dir = os.path.join(cur_dir, "dataset")
-        meta_data_file_name = os.path.join(dataset_dir, "oasi.json")
-        meta_data = load_meta_data(json_path=meta_data_file_name)
-
-        dataset_file_name = os.path.join(dataset_dir, "oasi.csv")
-        self.dataframe = pandas.read_csv(
-            dataset_file_name, delimiter=",", index_col=False,
-            usecols=[meta.col_index for meta in meta_data])
-
-        # Drop all columns which have too many nans.
-        nan_fraction_accepted = 0.1
-        num_nans_accepted = int(nan_fraction_accepted * self.dataframe.shape[0])
-        drop_col_indices = []
-        for col_index, col in enumerate(self.dataframe.columns):
-            num_nans = np.count_nonzero(self.dataframe[col].isnull())
-            if num_nans > num_nans_accepted:
-                drop_col_indices.append(col_index)
-                print("Ignoring feature {} as there are too many 'nan's".format(col))
-
-        meta_data = [meta for meta in meta_data if meta.col_index not in drop_col_indices]
-        self.dataframe.drop(self.dataframe.columns[drop_col_indices],
-                            axis=1, inplace=True)
-
-        # Drop all rows which still contain a nan.
-        self.dataframe.dropna(inplace=True)
-
-        # Reorder columns inside the dataframe.
-        time_name = [meta.name for meta in meta_data
-                     if meta.type == ColumnType.TIME][0]
-
-        # Rename and reorder dataframe columns
-        self.feature_names = [meta.name for meta in meta_data
-                              if meta.type == ColumnType.FEATURE]
-
-        self.target_names = [meta.name for meta in meta_data
-                             if meta.type == ColumnType.TARGET]
-
-        self.dataframe = self.dataframe[
-            [time_name, *self.feature_names, *self.target_names]]
-
-        self.timestamp = self.dataframe.values[:, 0].copy()
-        self.dataframe.drop(labels=self.dataframe.columns[0], inplace=True, axis=1)
-
-        self.feature_indices = [i for i in range(len(self.feature_names))]
-        self.target_indices = [i + self.feature_indices[-1] + 1
-                               for i in range(len(self.target_names))]
-
-        # Preprocess features
-        self.dataframe = self.dataframe.values.astype(np.float32)
-
     def create_data(self):
+        raise RuntimeError("'create_data' function not supported yet")
         x_linspace = np.linspace(0, 150 * np.pi, 2500)
 
         num_features = 3
@@ -258,13 +169,13 @@ class SimpleLSTM:
             targets.append(target)
         targets = np.array(targets).T
 
-        self.dataframe = np.concatenate((features, targets), axis=1)
-        self.feature_names = ["feature {}".format(i + 1) for i in range(
-            self.features.shape[1])]
-        self.target_names = ["target {}".format(i + 1) for i in range(
-            self.targets.shape[1])]
+        self.dataset.dataframe = np.concatenate((features, targets), axis=1)
+        self.dataset.feature_names = ["feature {}".format(i + 1) for i in range(
+            self.dataset.features.shape[1])]
+        self.dataset.target_names = ["target {}".format(i + 1) for i in range(
+            self.dataset.targets.shape[1])]
 
-        self.timestamp = np.arange(self.dataframe.shape[0])
+        self.dataset.timestamp = np.arange(self.dataframe.shape[0])
 
     def preprocess_data(self):
         def gaussian_kernel(size: int, width: tuple = (-0.5, 0.5)) -> np.ndarray:
@@ -275,18 +186,20 @@ class SimpleLSTM:
 
         if self.smoothing_window > 1:
             kernel = gaussian_kernel(self.smoothing_window)
-            for feature_id in range(self.features.shape[1]):
-                self.features[:, feature_id] = np.convolve(self.features[:, feature_id],
-                                                           kernel, "same")
-            for target_id in range(self.targets.shape[1]):
-                self.targets[:, target_id] = np.convolve(self.targets[:, target_id],
-                                                         kernel, "same")
+            for feature_id in range(self.dataset.features.shape[1]):
+                self.dataset.features[:, feature_id] = np.convolve(
+                    self.dataset.features[:, feature_id],
+                    kernel, "same")
+            for target_id in range(self.dataset.targets.shape[1]):
+                self.dataset.targets[:, target_id] = np.convolve(
+                    self.dataset.targets[:, target_id],
+                    kernel, "same")
 
         self.prepare_feature_transformer()
         self.prepare_target_transformer()
 
-        self.features = self.transform_features(self.features)
-        self.targets = self.transform_targets(self.targets)
+        self.dataset.features = self.transform_features(self.dataset.features)
+        self.dataset.targets = self.transform_targets(self.dataset.targets)
 
     @staticmethod
     def create_supervised_data(features: np.ndarray, targets: np.ndarray,
@@ -398,7 +311,7 @@ class SimpleLSTM:
 
     def prepare_feature_transformer(self):
         self.feature_transformer = MinMaxScaler()
-        self.feature_transformer.fit(self.features)
+        self.feature_transformer.fit(self.dataset.features)
 
     def transform_features(self, features: np.ndarray) -> np.ndarray:
         return self.feature_transformer.transform(features)
@@ -408,35 +321,13 @@ class SimpleLSTM:
 
     def prepare_target_transformer(self):
         self.target_transformer = MinMaxScaler()
-        self.target_transformer.fit(self.targets)
+        self.target_transformer.fit(self.dataset.targets)
 
     def transform_targets(self, targets: np.ndarray) -> np.ndarray:
         return self.target_transformer.transform(targets)
 
     def transform_target_back(self, transformed_targets: np.ndarray) -> np.ndarray:
         return self.target_transformer.inverse_transform(transformed_targets)
-
-    @property
-    def features(self) -> np.ndarray:
-        return np.atleast_2d(self.dataframe[:, self.feature_indices])
-
-    @features.setter
-    def features(self, f: np.ndarray):
-        assert (f.shape == self.features.shape)
-        self.dataframe[:, self.feature_indices] = f
-
-    @property
-    def targets(self) -> np.ndarray:
-        t = np.atleast_2d(self.dataframe[:, self.target_indices])
-        if t.shape[0] == 1:
-            t = t.T
-        return t
-
-    @targets.setter
-    def targets(self, t: np.ndarray):
-        t = np.atleast_2d(t)
-        assert (t.shape == self.targets.shape)
-        self.dataframe[:, self.target_indices] = t
 
     @staticmethod
     def train_test_split(features: np.ndarray, targets: np.ndarray,
