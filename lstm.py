@@ -31,7 +31,7 @@ class SimpleLSTM:
 
         # Model
         self.model = None  # type: Sequential
-        self.units = [128, 128]
+        self.units = [128, 256]
 
         self.look_back = 2 * 24 * 2
         self.look_front = 1 * 24 * 2
@@ -88,17 +88,30 @@ class SimpleLSTM:
               "\n\tTargets:  {}".format(self.test_x.shape, self.test_y.shape))
 
         # Create a learning model and train in on the train data.
+
+        print("Units: {}".format(self.units))
+        print("Look back: {}".format(self.look_back))
+        print("Features in: {}".format(self.dataset.targets.shape[1]))
+        print("Look front: {}".format(self.look_front))
+        print("Features out: {}".format(self.dataset.targets.shape[1]))
+
         self.model = Sequential()
         self.model.add(LSTM(units=self.units[0],
                             input_shape=(self.look_back, self.dataset.features.shape[1]),
-                            return_sequences=False))
+                            return_sequences=False))  # shape: (None, self.units[0])
 
         self.model.add(RepeatVector(self.look_front))
+        # shape: (None, self.look_front, self.units[0])
+
         self.model.add(LSTM(units=self.units[1], return_sequences=True))
+        # shape: (None, self.look_front, self.units[1])
+
         self.model.add(TimeDistributed(Dense(self.dataset.targets.shape[1])))
+        # shape: (None, self.dataset.targets.shape[1])
+
         self.model.add(Activation('linear'))
 
-        self.model.compile(loss='mae', optimizer='adam')
+        self.model.compile(loss='mse', optimizer='adam')
 
         print(self.model.summary())
 
