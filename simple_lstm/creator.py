@@ -7,16 +7,19 @@ from simple_lstm import Dataset
 
 class DatasetCreatorParams:
     def __init__(self, num_features: int = 9, num_targets: int = 1,
-                 num_samples: int = 10000, sample_dt: timedelta = timedelta(minutes=30),
-                 functions: set = {np.sin, np.cos},
-                 frequency_scale: float = 1.0, amplitude_scale: float = 1.0,
+                 num_samples: int = 1000, sample_dt: timedelta = timedelta(minutes=30),
+                 sample_dx: float = np.pi / 100.0, functions: set = {np.sin, np.cos},
+                 frequency_scale: float = None, amplitude_scale: float = 1.0,
                  random_seed: int = None):
         self.num_features = num_features
         self.num_targets = num_targets
         self.num_samples = num_samples
         self.sample_dt = sample_dt
+        self.sample_dx = sample_dx
 
         self.functions = list(functions)
+        if frequency_scale is None:
+            frequency_scale = 0.25 / sample_dx
         self.frequency_scale = frequency_scale
         self.amplitude_scale = amplitude_scale
 
@@ -34,15 +37,17 @@ class DatasetCreator:
         base_date = datetime(2000, 1, 1)
         time_linspace = np.array([base_date + i * self.params.sample_dt
                                   for i in range(self.params.num_samples)])
-        x_linspace = np.linspace(0, 100 * np.pi, self.params.num_samples)
 
+        start_x = 0
+        end_x = self.params.sample_dx * self.params.num_samples
+        x_linspace = np.linspace(start_x, end_x, self.params.num_samples)
 
         features = []
         for i in range(self.params.num_features):
             amplitude = self.params.amplitude_scale * np.random.rand()
             frequency = self.params.frequency_scale * np.random.rand()
             funct = np.random.choice(self.params.functions)
-            feature = amplitude * funct(frequency * x_linspace + np.random.rand())
+            feature = amplitude * funct(frequency * x_linspace)
             features.append(feature)
 
         features = np.atleast_2d(np.array(features).T)

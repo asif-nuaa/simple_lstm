@@ -11,7 +11,8 @@ from matplotlib import pylab as plt
 from sklearn.metrics import mean_squared_error
 from sklearn.preprocessing import MinMaxScaler
 
-from simple_lstm import Settings, DatasetLoader, Dataset, DatasetCreatorParams, DatasetCreator
+from simple_lstm import Settings, DatasetLoader, Dataset, DatasetCreatorParams, \
+    DatasetCreator
 
 
 class SimpleLSTM:
@@ -53,7 +54,13 @@ class SimpleLSTM:
                                            meta_data_path=self.meta_data_path)
             self.dataset = dataset_loader.load()
         else:
-            dataset_creator_params = DatasetCreatorParams()
+            functions = {lambda x: np.cos(x) + 0.5 * np.random.rand(len(x)),
+                         lambda x: np.sin(x) + 0.5 * np.random.rand(len(x))}
+            dataset_creator_params = DatasetCreatorParams(random_seed=0, num_features=30,
+                                                          functions=functions,
+                                                          sample_dx=1,
+                                                          frequency_scale=1.,
+                                                          num_samples=1000)
             dataset_creator = DatasetCreator(params=dataset_creator_params)
             self.dataset = dataset_creator.create()
 
@@ -177,8 +184,8 @@ class SimpleLSTM:
         rmse = np.sqrt(mean_squared_error(inv_y, inv_yhat))
         print('Test RMSE: %.3f' % rmse)
 
-        plt.plot(inv_yhat, label="Prediction", linewidth=2)
-        plt.plot(inv_y, label="ground truth", linewidth=2)
+        plt.plot(inv_yhat, label="Prediction", linewidth=3)
+        plt.plot(inv_y, label="ground truth", linewidth=3)
         start = 0
         for y in yhat:
             if start % 20 == 0:
