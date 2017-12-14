@@ -11,14 +11,14 @@ from matplotlib import pylab as plt
 from sklearn.metrics import mean_squared_error
 from sklearn.preprocessing import MinMaxScaler
 
-from simple_lstm import Settings, DatasetLoader, Dataset
+from simple_lstm import Settings, DatasetLoader, Dataset, DatasetCreatorParams, DatasetCreator
 
 
 class SimpleLSTM:
     def __init__(self):
 
         # Data
-        self.use_csv_file = True
+        self.use_csv_file = False
         self.dataset = None  # type: Dataset
 
         self.csv_path = os.path.join(Settings.dataset_root, "oasi.csv")
@@ -53,7 +53,9 @@ class SimpleLSTM:
                                            meta_data_path=self.meta_data_path)
             self.dataset = dataset_loader.load()
         else:
-            self.dataset = self.create_data()
+            dataset_creator_params = DatasetCreatorParams()
+            dataset_creator = DatasetCreator(params=dataset_creator_params)
+            self.dataset = dataset_creator.create()
 
         print("Raw data shapes:"
               "\nFeatures: {} (observations, num features)"
@@ -186,38 +188,6 @@ class SimpleLSTM:
 
         plt.legend()
         plt.show()
-
-    def create_data(self):
-        raise RuntimeError("'create_data' function not supported yet")
-        x_linspace = np.linspace(0, 150 * np.pi, 2500)
-
-        num_features = 3
-        num_targets = 1
-
-        features = []
-        functions = [np.sin, np.cos]
-        for i in range(num_features):
-            feature = np.random.rand() + np.random.rand() * np.random.choice(functions)(
-                np.random.rand() * x_linspace + np.random.rand()
-            )
-            features.append(feature)
-        features = np.array(features).T
-
-        targets = []
-        for i in range(num_targets):
-            target = np.zeros(features.shape[0])
-            for feature in features.T:
-                target += np.random.rand() * feature
-            targets.append(target)
-        targets = np.array(targets).T
-
-        self.dataset.dataframe = np.concatenate((features, targets), axis=1)
-        self.dataset.feature_names = ["feature {}".format(i + 1) for i in range(
-            self.dataset.features.shape[1])]
-        self.dataset.target_names = ["target {}".format(i + 1) for i in range(
-            self.dataset.targets.shape[1])]
-
-        self.dataset.timestamp = np.arange(self.dataframe.shape[0])
 
     def preprocess_data(self):
         def gaussian_kernel(size: int, width: tuple = (-0.5, 0.5)) -> np.ndarray:

@@ -1,6 +1,7 @@
 import os
 
 from .dataset import Dataset
+from .creator import DatasetCreatorParams, DatasetCreator
 from .loader import DatasetLoader
 
 
