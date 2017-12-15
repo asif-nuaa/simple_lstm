@@ -16,7 +16,6 @@ from matplotlib import gridspec as grid
 from matplotlib import pylab as plt
 
 from sklearn.metrics import mean_squared_error
-from sklearn.preprocessing import MinMaxScaler
 
 from simple_lstm import Settings
 from simple_lstm import DatasetLoader
@@ -24,6 +23,8 @@ from simple_lstm import Dataset
 from simple_lstm import DatasetCreatorParams
 from simple_lstm import DatasetCreator
 from simple_lstm import get_saver_callback
+from simple_lstm import DataPreprocessor
+from simple_lstm import DataScaler
 
 
 class SimpleLSTM:
@@ -40,9 +41,8 @@ class SimpleLSTM:
         self.meta_data_path = os.path.join(Settings.dataset_root, "oasi.json")
 
         # Preprocessing
-        self.feature_transformer = None  # type: MinMaxScaler
-        self.target_transformer = None  # type: MinMaxScaler
-        self.smoothing_window = 10
+        self.data_preprocessor = None  # type: DataPreprocessor
+        self.transfomers = [DataScaler]
 
         # Model
         self.model = None  # type: Sequential
@@ -55,7 +55,7 @@ class SimpleLSTM:
         self.look_front = 1 * 24 * 2
 
         # Training
-        self.num_epochs = 150
+        self.num_epochs = 1
         self.batch_size = 32
 
         self.train_x = None  # type: np.ndarray
@@ -64,9 +64,9 @@ class SimpleLSTM:
         self.test_y = None  # type: np.ndarray
 
         # Status
-        self.status_string = "{}_smooth-wind-{}_use-targets-{}_look-back-{}_" \
+        self.status_string = "{}_use-targets-{}_look-back-{}_" \
                              "look-front-{}_units-e-{}_units-d-{}".format(
-            self.start_time, self.smoothing_window, self.use_targets_as_feature,
+            self.start_time, self.use_targets_as_feature,
             self.look_back, self.look_front, self.encoding_units, self.decoding_units)
 
     def run(self):
@@ -199,7 +199,7 @@ class SimpleLSTM:
         yhat_sequential = \
             self.supervised_target_to_sequential(yhat, look_front=self.look_front)
         print("Sequential shape: {}".format(yhat_sequential.shape))
-        inv_yhat = self.transform_target_back(transformed_targets=yhat_sequential)
+        inv_yhat = self.data_preprocessor.restore_targets(yhat_sequential)
         print("Untransformed shape: {}".format(inv_yhat.shape))
         inv_yhat = inv_yhat[:, 0]
 
@@ -207,7 +207,7 @@ class SimpleLSTM:
         test_y_sequential = \
             self.supervised_target_to_sequential(self.test_y, look_front=self.look_front)
         print("Y_test sequential shape: {}".format(test_y_sequential.shape))
-        inv_y = self.transform_target_back(transformed_targets=test_y_sequential)
+        inv_y = self.data_preprocessor.restore_targets(test_y_sequential)
         print("Untransformed shape: {}".format(inv_y.shape))
         inv_y = inv_y[:, 0]
 
@@ -220,7 +220,7 @@ class SimpleLSTM:
         start = 0
         for y in yhat:
             if start % 20 == 0:
-                y = self.transform_target_back(y)
+                y = self.data_preprocessor.restore_targets(y)
                 plt.plot(start + np.arange(self.look_front), y)
             start += 1
 
@@ -228,31 +228,19 @@ class SimpleLSTM:
         plt.show()
 
     def preprocess_data(self):
-        def gaussian_kernel(size: int, width: tuple = (-0.5, 0.5)) -> np.ndarray:
-            k_lin = np.linspace(width[0], width[1], size)
-            k = np.exp(-k_lin ** 2)
-            k /= np.sum(k)
-            return k
 
-        if self.smoothing_window > 1:
-            kernel = gaussian_kernel(self.smoothing_window)
-            smooth_features = np.empty_like(self.dataset.features)
-            for feature_id in range(self.dataset.features.shape[1]):
-                smooth_features[:, feature_id] = np.convolve(
-                    self.dataset.features[:, feature_id], kernel, "same")
-            self.dataset.features = smooth_features
+        self.data_preprocessor = DataPreprocessor(features=self.dataset.features,
+                                                  targets=self.dataset.targets)
 
-            smooth_targets = np.empty_like(self.dataset.targets)
-            for target_id in range(self.dataset.targets.shape[1]):
-                smooth_targets[:, target_id] = np.convolve(
-                    self.dataset.targets[:, target_id], kernel, "same")
-            self.dataset.targets = smooth_targets
+        for transformer in self.transfomers:
+            self.data_preprocessor.add_transformer(
+                transformer(self.dataset.features, self.dataset.targets))
 
-        self.prepare_feature_transformer()
-        self.prepare_target_transformer()
+        transormed_features, transformed_targets = self.data_preprocessor.transform(
+            self.dataset.features, self.dataset.targets)
 
-        self.dataset.features = self.transform_features(self.dataset.features)
-        self.dataset.targets = self.transform_targets(self.dataset.targets)
+        self.dataset.features = transormed_features
+        self.dataset.targets = transformed_targets
 
     @staticmethod
     def create_supervised_data(features: np.ndarray, targets: np.ndarray,
@@ -360,26 +348,6 @@ class SimpleLSTM:
         fig.suptitle("Input dataset (blue: feature, red: target)")
         gs.tight_layout(fig, rect=[0.01, 0, 0.99, 0.95])
         plt.show()
-
-    def prepare_feature_transformer(self):
-        self.feature_transformer = MinMaxScaler()
-        self.feature_transformer.fit(self.dataset.features)
-
-    def transform_features(self, features: np.ndarray) -> np.ndarray:
-        return self.feature_transformer.transform(features)
-
-    def transform_features_back(self, transformed_features: np.ndarray) -> np.ndarray:
-        return self.feature_transformer.inverse_transform(transformed_features)
-
-    def prepare_target_transformer(self):
-        self.target_transformer = MinMaxScaler()
-        self.target_transformer.fit(self.dataset.targets)
-
-    def transform_targets(self, targets: np.ndarray) -> np.ndarray:
-        return self.target_transformer.transform(targets)
-
-    def transform_target_back(self, transformed_targets: np.ndarray) -> np.ndarray:
-        return self.target_transformer.inverse_transform(transformed_targets)
 
     @staticmethod
     def train_test_split(features: np.ndarray, targets: np.ndarray,

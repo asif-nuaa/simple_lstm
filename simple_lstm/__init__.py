@@ -4,6 +4,7 @@ from .dataset import Dataset
 from .creator import DatasetCreatorParams, DatasetCreator, gaussian
 from .loader import DatasetLoader
 from .saver import  get_saver_callback
+from .preprocessing import DataPreprocessor, DataScaler
 
 
 class __Settings:
