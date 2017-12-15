@@ -11,6 +11,7 @@ from keras.layers import Dense
 from keras.layers import RepeatVector
 from keras.layers import TimeDistributed
 from keras.layers import Activation
+from keras.optimizers import RMSprop
 
 from matplotlib import gridspec as grid
 from matplotlib import pylab as plt
@@ -59,6 +60,7 @@ class SimpleLSTM:
         self.num_epochs = 1000
         self.batch_size = 32
         self.train_fraction = 0.7
+        self.lr = 0.0002
 
         self.train_x = None  # type: np.ndarray
         self.train_y = None  # type: np.ndarray
@@ -181,7 +183,8 @@ class SimpleLSTM:
         self.model.add(Activation("linear"))
         # shape: (None, self.look_front, Y.shape[2])
 
-        self.model.compile(loss='mse', optimizer='RMSprop')
+        self.optimizer = RMSprop(lr=self.lr)
+        self.model.compile(loss='mse', optimizer=self.optimizer)
 
         print(self.model.summary())
 
