@@ -146,11 +146,11 @@ class RelativeDifference(AbstractTransformer):
         num_feature_samples = features.shape[0]
         num_target_samples = targets.shape[0]
 
-        assert (num_feature_samples == num_target_samples)
-
         for index in range(1, num_feature_samples):
             restored_features[index, :] = \
                 restored_features[index - 1, :] + features[index, :]
+
+        for index in range(1, num_target_samples):
             restored_targets[index, :] = \
                 restored_targets[index - 1, :] + targets[index, :]
 

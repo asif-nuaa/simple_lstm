@@ -25,15 +25,16 @@ from simple_lstm import DatasetCreator
 from simple_lstm import get_saver_callback
 from simple_lstm import DataPreprocessor
 from simple_lstm import DataScaler
+from simple_lstm import RelativeDifference
 
 
 class SimpleLSTM:
     def __init__(self):
 
-        self.start_time = datetime.now().strftime("%d.%m-%H:%M")
+        self.start_time = datetime.now().strftime("%d.%m-%H.%M")
 
         # Data
-        self.use_csv_file = True
+        self.use_csv_file = False
         self.dataset = None  # type: Dataset
         self.use_targets_as_feature = True
 
@@ -42,20 +43,20 @@ class SimpleLSTM:
 
         # Preprocessing
         self.data_preprocessor = None  # type: DataPreprocessor
-        self.transfomers = [DataScaler()]
+        self.transfomers = [RelativeDifference(), DataScaler()]
 
         # Model
         self.model = None  # type: Sequential
         self.model_callbacks = []  # type: list
 
-        self.encoding_units = [16]
-        self.decoding_units = [16]
+        self.encoding_units = [256]
+        self.decoding_units = [256]
 
-        self.look_back = 2 * 24 * 2
-        self.look_front = 1 * 24 * 2
+        self.look_back = int(2 * 24 * 2)
+        self.look_front = int(1 * 24 * 2)
 
         # Training
-        self.num_epochs = 1
+        self.num_epochs = 1000
         self.batch_size = 32
         self.train_fraction = 0.7
 
@@ -82,8 +83,8 @@ class SimpleLSTM:
                 lambda x: 0.7 * np.cos(1.2 * x),
                 lambda x: 1.2 * np.sin(1.45 * x)}
             dataset_creator_params = DatasetCreatorParams(
-                num_features=6, num_targets=1, functions=functions, sample_dx=1.,
-                frequency_scale=0.2, num_samples=1000, random_seed=1, randomize=False)
+                num_features=3, num_targets=1, functions=functions, sample_dx=1.,
+                frequency_scale=0.05, num_samples=10000, random_seed=1, randomize=False)
             dataset_creator = DatasetCreator(params=dataset_creator_params)
             self.dataset = dataset_creator.create()
 
@@ -196,6 +197,7 @@ class SimpleLSTM:
 
         # invert scaling for prediction
         yhat = self.model.predict(self.test_x)
+        print("Mean targets: {}".format(np.mean(yhat, axis=(1, 2))))
         print("Prediction shape: {}".format(yhat.shape))
         yhat_sequential = \
             self.supervised_target_to_sequential(yhat, look_front=self.look_front)
@@ -322,9 +324,6 @@ class SimpleLSTM:
         fig = plt.figure(figsize=fig_size)
         gs = grid.GridSpec(num_rows, num_cols)
 
-        # Remove the ticks to allow more space in the plot.
-        ticks_params = {'labelbottom': 'off', 'labelleft': 'off'}
-
         # Plot features
         for ax_index, (feature, feature_name) in enumerate(
                 zip(features.T, feature_names)):
@@ -332,7 +331,6 @@ class SimpleLSTM:
                                                      feature_name, feature.shape))
 
             ax = fig.add_subplot(gs[ax_index])  # type: plt.Axes
-            ax.tick_params(**ticks_params)
             # Feature
             ax.plot(feature)
             ax.set_title(feature_name)
@@ -343,7 +341,6 @@ class SimpleLSTM:
             print("plotting - {}/{} - {}({})".format(ax_index + 1, len(feature_names),
                                                      target_name, target.shape))
             ax = fig.add_subplot(gs[ax_index + num_features])  # type: plt.Axes
-            ax.tick_params(**ticks_params)
             ax.plot(target, color="red")
             ax.set_title(target_name)
 
