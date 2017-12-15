@@ -1,26 +1,40 @@
 import os
+from datetime import datetime
 
 import numpy as np
 
 # Make sure to use CPU only version, as for LSTM networks it is faster than GPU based.
 os.environ['CUDA_VISIBLE_DEVICES'] = '-1'
 from keras.models import Sequential
-from keras.layers import LSTM, Dense, RepeatVector, TimeDistributed, Activation
+from keras.layers import LSTM
+from keras.layers import Dense
+from keras.layers import RepeatVector
+from keras.layers import TimeDistributed
+from keras.layers import Activation
+
 from matplotlib import gridspec as grid
 from matplotlib import pylab as plt
+
 from sklearn.metrics import mean_squared_error
 from sklearn.preprocessing import MinMaxScaler
 
-from simple_lstm import Settings, DatasetLoader, Dataset, DatasetCreatorParams, \
-    DatasetCreator
+from simple_lstm import Settings
+from simple_lstm import DatasetLoader
+from simple_lstm import Dataset
+from simple_lstm import DatasetCreatorParams
+from simple_lstm import DatasetCreator
+from simple_lstm import get_saver_callback
 
 
 class SimpleLSTM:
     def __init__(self):
 
+        self.start_time = datetime.now().strftime("%d.%m-%H:%M")
+
         # Data
-        self.use_csv_file = False
+        self.use_csv_file = True
         self.dataset = None  # type: Dataset
+        self.use_targets_as_feature = True
 
         self.csv_path = os.path.join(Settings.dataset_root, "oasi.csv")
         self.meta_data_path = os.path.join(Settings.dataset_root, "oasi.json")
@@ -28,19 +42,20 @@ class SimpleLSTM:
         # Preprocessing
         self.feature_transformer = None  # type: MinMaxScaler
         self.target_transformer = None  # type: MinMaxScaler
-        self.smoothing_window = 1
+        self.smoothing_window = 10
 
         # Model
         self.model = None  # type: Sequential
+        self.model_callbacks = []  # type: list
 
-        self.encoding_units = [128]
-        self.decoding_units = [64]
+        self.encoding_units = [16]
+        self.decoding_units = [16]
 
         self.look_back = 2 * 24 * 2
         self.look_front = 1 * 24 * 2
 
         # Training
-        self.num_epochs = 100
+        self.num_epochs = 150
         self.batch_size = 32
 
         self.train_x = None  # type: np.ndarray
@@ -48,26 +63,40 @@ class SimpleLSTM:
         self.test_x = None  # type: np.ndarray
         self.test_y = None  # type: np.ndarray
 
+        # Status
+        self.status_string = "{}_smooth-wind-{}_use-targets-{}_look-back-{}_" \
+                             "look-front-{}_units-e-{}_units-d-{}".format(
+            self.start_time, self.smoothing_window, self.use_targets_as_feature,
+            self.look_back, self.look_front, self.encoding_units, self.decoding_units)
+
     def run(self):
         if self.use_csv_file:
             dataset_loader = DatasetLoader(csv_path=self.csv_path,
                                            meta_data_path=self.meta_data_path)
             self.dataset = dataset_loader.load()
         else:
-            functions = {lambda x: np.cos(x) + 0.5 * np.random.rand(len(x)),
-                         lambda x: np.sin(x) + 0.5 * np.random.rand(len(x))}
-            dataset_creator_params = DatasetCreatorParams(random_seed=0, num_features=30,
-                                                          functions=functions,
-                                                          sample_dx=1,
-                                                          frequency_scale=1.,
-                                                          num_samples=1000)
+            functions = {
+                lambda x: np.sin(0.3 * x),
+                lambda x: 0.5 * np.cos(0.3423 * x),
+                lambda x: 0.7 * np.cos(1.2 * x),
+                lambda x: 1.2 * np.sin(1.45 * x)}
+            dataset_creator_params = DatasetCreatorParams(
+                num_features=6, num_targets=1, functions=functions, sample_dx=1.,
+                frequency_scale=0.2, num_samples=1000, random_seed=1, randomize=False)
             dataset_creator = DatasetCreator(params=dataset_creator_params)
             self.dataset = dataset_creator.create()
+
+        if self.use_targets_as_feature:
+            self.dataset.set_targets_as_features()
 
         print("Raw data shapes:"
               "\nFeatures: {} (observations, num features)"
               "\nTargets:  {} (observations, num targets".format(
             self.dataset.features.shape, self.dataset.targets.shape))
+
+        self.plot_dataframe(features=self.dataset.features, targets=self.dataset.targets,
+                            feature_names=self.dataset.feature_names,
+                            target_names=self.dataset.target_names)
 
         # Preprocess the data by scaling, smoothing and shifting.
         self.preprocess_data()
@@ -103,23 +132,26 @@ class SimpleLSTM:
         print("Encoding units: {}".format(self.encoding_units))
         print("Decoding units: {}".format(self.decoding_units))
         print("Look back: {}".format(self.look_back))
-        print("Features in: {}".format(self.dataset.features.shape[1]))
+        print("Features in: {}".format(X.shape[2]))
         print("Look front: {}".format(self.look_front))
-        print("Features out: {}".format(self.dataset.targets.shape[1]))
+        print("Features out: {}".format(Y.shape[2]))
 
         self.model = Sequential()
+        saver_callback = get_saver_callback(checkpoint_dir=Settings.checkpoint_root,
+                                            status_str=self.status_string)
+        self.model_callbacks.append(saver_callback)
 
         # Encoder
         if len(self.encoding_units) == 1:
             self.model.add(LSTM(units=self.encoding_units[0],
                                 input_shape=(
-                                    self.look_back, self.dataset.features.shape[1]),
+                                    self.look_back, X.shape[2]),
                                 return_sequences=False))
             # shape: (None, self.encoding_units[0])
         else:
             self.model.add(LSTM(units=self.encoding_units[0],
                                 input_shape=(
-                                    self.look_back, self.dataset.features.shape[1]),
+                                    self.look_back, X.shape[2]),
                                 return_sequences=True))
             # shape: (None, look_back, self.encoding_units[0])
 
@@ -141,12 +173,11 @@ class SimpleLSTM:
 
         # Readout layers (apply the same dense layer to all self.look_front matrices
         # coming from the previous layer).
-        self.model.add(TimeDistributed(Dense(self.dataset.targets.shape[1])))
-        # shape: (None, self.look_front, self.dataset.targets.shape[1])
+        self.model.add(TimeDistributed(Dense(Y.shape[2])))
+        # shape: (None, self.look_front, Y.shape[2])
 
         self.model.add(Activation("linear"))
-        # shape: (None, self.look_front, self.dataset.targets.shape[1])
-
+        # shape: (None, self.look_front, Y.shape[2])
 
         self.model.compile(loss='mse', optimizer='RMSprop')
 
@@ -155,7 +186,7 @@ class SimpleLSTM:
         history = self.model.fit(self.train_x, self.train_y, epochs=self.num_epochs,
                                  batch_size=self.batch_size,
                                  validation_data=(self.test_x, self.test_y), verbose=1,
-                                 shuffle=False)
+                                 shuffle=False, callbacks=[saver_callback])
 
         plt.plot(history.history['loss'], label='train')
         plt.plot(history.history['val_loss'], label='test')
@@ -205,14 +236,17 @@ class SimpleLSTM:
 
         if self.smoothing_window > 1:
             kernel = gaussian_kernel(self.smoothing_window)
+            smooth_features = np.empty_like(self.dataset.features)
             for feature_id in range(self.dataset.features.shape[1]):
-                self.dataset.features[:, feature_id] = np.convolve(
-                    self.dataset.features[:, feature_id],
-                    kernel, "same")
+                smooth_features[:, feature_id] = np.convolve(
+                    self.dataset.features[:, feature_id], kernel, "same")
+            self.dataset.features = smooth_features
+
+            smooth_targets = np.empty_like(self.dataset.targets)
             for target_id in range(self.dataset.targets.shape[1]):
-                self.dataset.targets[:, target_id] = np.convolve(
-                    self.dataset.targets[:, target_id],
-                    kernel, "same")
+                smooth_targets[:, target_id] = np.convolve(
+                    self.dataset.targets[:, target_id], kernel, "same")
+            self.dataset.targets = smooth_targets
 
         self.prepare_feature_transformer()
         self.prepare_target_transformer()

@@ -15,6 +15,21 @@ class Dataset:
 
         self.__check_consistency()
 
+    def set_targets_as_features(self):
+        features = self.features.copy()
+        targets = self.targets.copy()
+
+        self.dataframe = np.concatenate((features, targets, targets), axis=1)
+        self.feature_indices = np.arange(0, features.shape[1] + targets.shape[1])
+        self.target_indices = np.arange(features.shape[1] + targets.shape[1],
+                                        features.shape[1] + targets.shape[1] +
+                                        targets.shape[1])
+        self.feature_names = [*self.feature_names, *self.target_names]
+        for i in range(features.shape[1], features.shape[1] + targets.shape[1]):
+            self.feature_names[i] = "feat - {}".format(self.feature_names[i])
+
+        self.__check_consistency()
+
     def __check_consistency(self):
 
         # Verify that the dataframe is 2-dimensional
