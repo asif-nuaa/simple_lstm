@@ -42,7 +42,7 @@ class SimpleLSTM:
 
         # Preprocessing
         self.data_preprocessor = None  # type: DataPreprocessor
-        self.transfomers = [DataScaler]
+        self.transfomers = [DataScaler()]
 
         # Model
         self.model = None  # type: Sequential
@@ -57,6 +57,7 @@ class SimpleLSTM:
         # Training
         self.num_epochs = 1
         self.batch_size = 32
+        self.train_fraction = 0.7
 
         self.train_x = None  # type: np.ndarray
         self.train_y = None  # type: np.ndarray
@@ -117,7 +118,7 @@ class SimpleLSTM:
 
         # Split the data into train test.
         self.train_x, self.train_y, self.test_x, self.test_y = self.train_test_split(
-            features=X, targets=Y, train_fraction=0.7)
+            features=X, targets=Y, train_fraction=self.train_fraction)
 
         print("Train data:"
               "\n\tFeatures: {}"
@@ -229,13 +230,14 @@ class SimpleLSTM:
 
     def preprocess_data(self):
 
-        self.data_preprocessor = DataPreprocessor(features=self.dataset.features,
-                                                  targets=self.dataset.targets)
+        self.data_preprocessor = DataPreprocessor(self.transfomers)
 
-        for transformer in self.transfomers:
-            self.data_preprocessor.add_transformer(
-                transformer(self.dataset.features, self.dataset.targets))
+        # Fit the training data to the transformers.
+        num_training_data = int(np.round(self.train_fraction * self.dataset.num_samples))
+        self.data_preprocessor.fit(features=self.dataset.features[:num_training_data, :],
+                                   targets=self.dataset.targets[:num_training_data, :])
 
+        # Transform the entire dataset using the transformers.
         transormed_features, transformed_targets = self.data_preprocessor.transform(
             self.dataset.features, self.dataset.targets)
 

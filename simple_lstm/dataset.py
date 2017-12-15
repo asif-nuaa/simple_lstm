@@ -75,3 +75,11 @@ class Dataset:
         assert (t.shape == self.targets.shape)
         self.dataframe[:, self.target_indices] = t
 
+    @property
+    def num_samples(self) -> int:
+        num_feature_samples = self.features.shape[0]
+        num_target_samples = self.targets.shape[0]
+
+        assert (num_feature_samples == num_target_samples)
+
+        return num_feature_samples
