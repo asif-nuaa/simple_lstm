@@ -129,6 +129,52 @@ class DataScaler(AbstractTransformer):
         return self.__target_scaler.inverse_transform(targets)
 
 
+class RelativeDifference(AbstractTransformer):
+    def __init__(self):
+        super().__init__()
+
+        self.__start_features = None  # type: np.ndarray
+        self.__start_targets = None  # type: np.ndarray
+
+    def restore(self, features: np.ndarray, targets: np.ndarray) -> tuple:
+        restored_features = np.empty_like(features)
+        restored_targets = np.empty_like(targets)
+
+        restored_features[0, :] = self.__start_features
+        restored_targets[0, :] = self.__start_targets
+
+        num_feature_samples = features.shape[0]
+        num_target_samples = targets.shape[0]
+
+        assert (num_feature_samples == num_target_samples)
+
+        for index in range(1, num_feature_samples):
+            restored_features[index, :] = \
+                restored_features[index - 1, :] + features[index, :]
+            restored_targets[index, :] = \
+                restored_targets[index - 1, :] + targets[index, :]
+
+        return restored_features, restored_targets
+
+    def transform(self, features: np.ndarray, targets: np.ndarray) -> tuple:
+        self.__start_features = features[0, :].copy()
+        self.__start_targets = targets[0, :].copy()
+
+        shift_features = np.empty_like(features)
+        shift_targets = np.empty_like(targets)
+
+        shift_features[1:, :] = features[1:, :] - features[0:-1, :]
+        shift_targets[1:, :] = targets[1:, :] - targets[0:-1, :]
+
+        shift_features[0, :] = 0
+        shift_targets[0, :] = 0
+
+        return shift_features, shift_targets
+
+    def fit(self, features: np.ndarray, targets: np.ndarray) -> tuple:
+        return self.transform(features, targets)
+
+
 class DataPreprocessor(AbstractTransformer):
     def __init__(self, transformers=None):
         super().__init__()
