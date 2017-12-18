@@ -41,7 +41,7 @@ class SimpleLSTM:
         self.look_front = int(1 * 24 * 2)
 
         # Training
-        self.lr = 0.002
+        self.lr = 0.0005
 
         # Status
         self.status_string = "{}_look-back-{}_" \

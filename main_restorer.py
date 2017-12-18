@@ -1,6 +1,8 @@
 import os
 
+import matplotlib.dates as mdates
 import numpy as np
+from matplotlib import pylab as plt
 
 from simple_lstm import DataPreprocessor
 from simple_lstm import DataScaler
@@ -37,7 +39,7 @@ def load_dataset(use_csv: bool = True, csv_file_name: str = "oasi"):
             lambda x: 1.2 * np.sin(1.45 * x)}
         dataset_creator_params = DatasetCreatorParams(
             num_features=6, num_targets=1, functions=functions, sample_dx=1.,
-            frequency_scale=0.05, num_samples=20000, random_seed=1, randomize=False)
+            frequency_scale=0.05, num_samples=10000, random_seed=1, randomize=False)
         dataset_creator = DatasetCreator(params=dataset_creator_params)
         dataset = dataset_creator.create()  # type: Dataset
         return dataset
@@ -126,9 +128,39 @@ if __name__ == '__main__':
     restored_gt = data_preprocessor.restore_targets(test_y)
     restored_pred = data_preprocessor.restore_targets(pred_y)
 
-    from matplotlib import pylab as plt
+    # Plot the predictions
+    test_time = dataset.timestamp[-len(restored_pred):]
 
-    plt.plot(restored_pred, label="Prediction")
-    plt.plot(restored_gt, label="Original")
-    plt.legend()
+    fig = plt.figure()
+    ax = fig.add_subplot(111)
+
+    x_tick_locator = mdates.DayLocator(interval=1)
+    # Mark every 6 hours
+    x_min_tick_locator = mdates.HourLocator()
+
+    formatter = mdates.DateFormatter("%d %b '%y")
+
+    ax.plot(test_time, restored_pred, label="Prediction")
+    ax.plot(test_time, restored_gt, label="Original")
+    ax.legend()
+
+    ax.xaxis.set_major_locator(x_tick_locator)
+    ax.xaxis.set_major_formatter(formatter)
+
+    ax.xaxis.set_minor_locator(x_min_tick_locator)
+
+    # Plot a grid
+    ax.minorticks_on()
+    # Customize the major grid
+    ax.grid(which='major', linestyle=':', linewidth='1', color='black')
+    # Customize the minor grid
+    ax.grid(which='minor', linestyle=':', linewidth='0.5', color='gray')
+
+    # Format the coordiante box
+    ax.format_xdata = mdates.DateFormatter("%d %b '%y - %H:%M")
+
+    fig.autofmt_xdate()
+
+    plt.xticks(rotation=45)
+    plt.tight_layout()
     plt.show()
