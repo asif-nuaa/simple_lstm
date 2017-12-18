@@ -12,6 +12,7 @@ from keras.layers import RepeatVector
 from keras.layers import TimeDistributed
 from keras.layers import Activation
 from keras.optimizers import RMSprop
+from keras.models import load_model
 
 from matplotlib import gridspec as grid
 from matplotlib import pylab as plt
@@ -26,19 +27,10 @@ from simple_lstm import DatasetCreator
 from simple_lstm import get_saver_callback
 from simple_lstm import DataPreprocessor
 from simple_lstm import DataScaler
-from simple_lstm import RelativeDifference
 
 
 class SimpleLSTM:
-    def __init__(self, checkpoint_path : str = None):
-
-        self.use_checkpoint = False
-
-        # In case this argument is not None, load the checkpoint from memory and start
-        # the training/inference from that state.
-        if checkpoint_path is not None:
-            self.checkpoint_path = checkpoint_path
-            self.use_checkpoint = True
+    def __init__(self):
 
         self.start_time = datetime.now().strftime("%d.%m-%H.%M")
 
@@ -59,18 +51,20 @@ class SimpleLSTM:
         self.model = None  # type: Sequential
         self.model_callbacks = []  # type: list
 
-        self.encoding_units = [256]
-        self.decoding_units = [256]
+        self.encoding_units = [15]
+        self.decoding_units = [15]
 
         self.look_back = int(2 * 24 * 2)
         self.look_front = int(1 * 24 * 2)
 
         # Training
-        self.num_epochs = 1000
+        self.num_epochs = 5
         self.batch_size = 32
         self.train_fraction = 0.7
-        self.lr = 0.0002
+        self.lr = 0.002
 
+        self.X = None  # type: np.ndarray
+        self.Y = None  # type: np.ndarray
         self.train_x = None  # type: np.ndarray
         self.train_y = None  # type: np.ndarray
         self.test_x = None  # type: np.ndarray
@@ -83,6 +77,28 @@ class SimpleLSTM:
             self.look_back, self.look_front, self.encoding_units, self.decoding_units)
 
     def run(self):
+
+        self.load_data()
+
+        self.plot_dataframe(features=self.dataset.features, targets=self.dataset.targets,
+                            feature_names=self.dataset.feature_names,
+                            target_names=self.dataset.target_names)
+
+        # Preprocess the data by scaling, smoothing and shifting.
+        self.preprocess_data()
+
+        self.plot_dataframe(features=self.dataset.features, targets=self.dataset.targets,
+                            feature_names=self.dataset.feature_names,
+                            target_names=self.dataset.target_names)
+
+        self.prepare_train_test_data()
+        self.create_model()
+        self.train()
+        yhat = self.inference()
+
+        self.plot_inference(yhat)
+
+    def load_data(self):
         if self.use_csv_file:
             dataset_loader = DatasetLoader(csv_path=self.csv_path,
                                            meta_data_path=self.meta_data_path)
@@ -106,141 +122,6 @@ class SimpleLSTM:
               "\nFeatures: {} (observations, num features)"
               "\nTargets:  {} (observations, num targets".format(
             self.dataset.features.shape, self.dataset.targets.shape))
-
-        self.plot_dataframe(features=self.dataset.features, targets=self.dataset.targets,
-                            feature_names=self.dataset.feature_names,
-                            target_names=self.dataset.target_names)
-
-        # Preprocess the data by scaling, smoothing and shifting.
-        self.preprocess_data()
-
-        self.plot_dataframe(features=self.dataset.features, targets=self.dataset.targets,
-                            feature_names=self.dataset.feature_names,
-                            target_names=self.dataset.target_names)
-
-        X, Y = self.create_supervised_data(features=self.dataset.features,
-                                           targets=self.dataset.targets,
-                                           look_back=self.look_back,
-                                           look_front=self.look_front)
-
-        print("Supervised data shapes:"
-              "\nX: {} (batch, window size, num features),"
-              "\nY: {} (batch, prediction window size, num features)".format(
-            X.shape, Y.shape))
-
-        # Split the data into train test.
-        self.train_x, self.train_y, self.test_x, self.test_y = self.train_test_split(
-            features=X, targets=Y, train_fraction=self.train_fraction)
-
-        print("Train data:"
-              "\n\tFeatures: {}"
-              "\n\tTargets:  {}".format(self.train_x.shape, self.train_y.shape))
-
-        print("Test data:"
-              "\n\tFeatures: {}"
-              "\n\tTargets:  {}".format(self.test_x.shape, self.test_y.shape))
-
-        # Create a learning model and train in on the train data.
-
-        print("Encoding units: {}".format(self.encoding_units))
-        print("Decoding units: {}".format(self.decoding_units))
-        print("Look back: {}".format(self.look_back))
-        print("Features in: {}".format(X.shape[2]))
-        print("Look front: {}".format(self.look_front))
-        print("Features out: {}".format(Y.shape[2]))
-
-        self.model = Sequential()
-        saver_callback = get_saver_callback(checkpoint_dir=Settings.checkpoint_root,
-                                            status_str=self.status_string)
-        self.model_callbacks.append(saver_callback)
-
-        # Encoder
-        if len(self.encoding_units) == 1:
-            self.model.add(LSTM(units=self.encoding_units[0],
-                                input_shape=(
-                                    self.look_back, X.shape[2]),
-                                return_sequences=False))
-            # shape: (None, self.encoding_units[0])
-        else:
-            self.model.add(LSTM(units=self.encoding_units[0],
-                                input_shape=(
-                                    self.look_back, X.shape[2]),
-                                return_sequences=True))
-            # shape: (None, look_back, self.encoding_units[0])
-
-            for units in self.encoding_units[1:-1]:
-                self.model.add(LSTM(units=units, return_sequences=True))
-                # shape: (None, look_back, units)
-
-            self.model.add(LSTM(units=self.encoding_units[-1], return_sequences=False))
-            # shape: (None, self.encoding_units[-1])
-
-        # Bridge between encoder and decoder.
-        self.model.add(RepeatVector(self.look_front))
-        # shape: (None, self.look_front, self.encoding_units[-1])
-
-        # Decoder.
-        for units in self.decoding_units:
-            self.model.add(LSTM(units=units, return_sequences=True))
-            # shape: (None, self.look_front, units)
-
-        # Readout layers (apply the same dense layer to all self.look_front matrices
-        # coming from the previous layer).
-        self.model.add(TimeDistributed(Dense(Y.shape[2])))
-        # shape: (None, self.look_front, Y.shape[2])
-
-        self.model.add(Activation("linear"))
-        # shape: (None, self.look_front, Y.shape[2])
-
-        self.optimizer = RMSprop(lr=self.lr)
-        self.model.compile(loss='mse', optimizer=self.optimizer)
-
-        print(self.model.summary())
-
-        history = self.model.fit(self.train_x, self.train_y, epochs=self.num_epochs,
-                                 batch_size=self.batch_size,
-                                 validation_data=(self.test_x, self.test_y), verbose=1,
-                                 shuffle=False, callbacks=[saver_callback])
-
-        plt.plot(history.history['loss'], label='train')
-        plt.plot(history.history['val_loss'], label='test')
-        plt.legend()
-        plt.show()
-
-        # invert scaling for prediction
-        yhat = self.model.predict(self.test_x)
-        print("Mean targets: {}".format(np.mean(yhat, axis=(1, 2))))
-        print("Prediction shape: {}".format(yhat.shape))
-        yhat_sequential = \
-            self.supervised_target_to_sequential(yhat, look_front=self.look_front)
-        print("Sequential shape: {}".format(yhat_sequential.shape))
-        inv_yhat = self.data_preprocessor.restore_targets(yhat_sequential)
-        print("Untransformed shape: {}".format(inv_yhat.shape))
-        inv_yhat = inv_yhat[:, 0]
-
-        # invert scaling for test targets
-        test_y_sequential = \
-            self.supervised_target_to_sequential(self.test_y, look_front=self.look_front)
-        print("Y_test sequential shape: {}".format(test_y_sequential.shape))
-        inv_y = self.data_preprocessor.restore_targets(test_y_sequential)
-        print("Untransformed shape: {}".format(inv_y.shape))
-        inv_y = inv_y[:, 0]
-
-        # calculate RMSE
-        rmse = np.sqrt(mean_squared_error(inv_y, inv_yhat))
-        print('Test RMSE: %.3f' % rmse)
-
-        plt.plot(inv_yhat, label="Prediction", linewidth=3)
-        plt.plot(inv_y, label="ground truth", linewidth=3)
-        start = 0
-        for y in yhat:
-            if start % 20 == 0:
-                y = self.data_preprocessor.restore_targets(y)
-                plt.plot(start + np.arange(self.look_front), y)
-            start += 1
-
-        plt.legend()
-        plt.show()
 
     def preprocess_data(self):
 
@@ -302,6 +183,151 @@ class SimpleLSTM:
             Y = Y[:, :, np.newaxis]
 
         return X, Y
+
+    def prepare_train_test_data(self):
+        self.X, self.Y = self.create_supervised_data(features=self.dataset.features,
+                                                     targets=self.dataset.targets,
+                                                     look_back=self.look_back,
+                                                     look_front=self.look_front)
+
+        print("Supervised data shapes:"
+              "\nX: {} (batch, window size, num features),"
+              "\nY: {} (batch, prediction window size, num features)".format(
+            self.X.shape, self.Y.shape))
+
+        # Split the data into train test.
+        self.train_x, self.train_y, self.test_x, self.test_y = self.train_test_split(
+            features=self.X, targets=self.Y, train_fraction=self.train_fraction)
+
+        print("Train data:"
+              "\n\tFeatures: {}"
+              "\n\tTargets:  {}".format(self.train_x.shape, self.train_y.shape))
+
+        print("Test data:"
+              "\n\tFeatures: {}"
+              "\n\tTargets:  {}".format(self.test_x.shape, self.test_y.shape))
+
+        # Create a learning model and train in on the train data.
+
+        print("Encoding units: {}".format(self.encoding_units))
+        print("Decoding units: {}".format(self.decoding_units))
+        print("Look back: {}".format(self.look_back))
+        print("Features in: {}".format(self.X.shape[2]))
+        print("Look front: {}".format(self.look_front))
+        print("Features out: {}".format(self.Y.shape[2]))
+
+    def create_model(self, checkpoint_path: str = None):
+        if checkpoint_path is None:
+            self.model = Sequential()
+            saver_callback = get_saver_callback(checkpoint_dir=Settings.checkpoint_root,
+                                                status_str=self.status_string)
+            self.model_callbacks.append(saver_callback)
+
+            # Encoder
+            if len(self.encoding_units) == 1:
+                self.model.add(LSTM(units=self.encoding_units[0],
+                                    input_shape=(
+                                        self.look_back, self.X.shape[2]),
+                                    return_sequences=False))
+                # shape: (None, self.encoding_units[0])
+            else:
+                self.model.add(LSTM(units=self.encoding_units[0],
+                                    input_shape=(
+                                        self.look_back, self.X.shape[2]),
+                                    return_sequences=True))
+                # shape: (None, look_back, self.encoding_units[0])
+
+                for units in self.encoding_units[1:-1]:
+                    self.model.add(LSTM(units=units, return_sequences=True))
+                    # shape: (None, look_back, units)
+
+                self.model.add(
+                    LSTM(units=self.encoding_units[-1], return_sequences=False))
+                # shape: (None, self.encoding_units[-1])
+
+            # Bridge between encoder and decoder.
+            self.model.add(RepeatVector(self.look_front))
+            # shape: (None, self.look_front, self.encoding_units[-1])
+
+            # Decoder.
+            for units in self.decoding_units:
+                self.model.add(LSTM(units=units, return_sequences=True))
+                # shape: (None, self.look_front, units)
+
+            # Readout layers (apply the same dense layer to all self.look_front matrices
+            # coming from the previous layer).
+            self.model.add(TimeDistributed(Dense(self.Y.shape[2])))
+            # shape: (None, self.look_front, Y.shape[2])
+
+            self.model.add(Activation("linear"))
+            # shape: (None, self.look_front, Y.shape[2])
+
+            self.optimizer = RMSprop(lr=self.lr)
+            self.model.compile(loss='mse', optimizer=self.optimizer)
+        else:
+            # Use the checkpoint passed as argument to load the model with associated
+            # weights.
+            if not os.path.exists(checkpoint_path):
+                raise RuntimeError(
+                    "Model checkpoint {} does not exist".format(checkpoint_path))
+            self.model = load_model(checkpoint_path)
+            self.optimizer = self.model.optimizer
+
+        print(self.model.summary())
+
+    def train(self):
+        history = self.model.fit(self.train_x, self.train_y, epochs=self.num_epochs,
+                                 batch_size=self.batch_size,
+                                 validation_data=(self.test_x, self.test_y), verbose=1,
+                                 shuffle=False, callbacks=self.model_callbacks)
+
+        plt.plot(history.history['loss'], label='train')
+        plt.plot(history.history['val_loss'], label='test')
+        plt.legend()
+        plt.show()
+
+    def inference(self, inference_data: np.ndarray = None) -> np.ndarray:
+
+        inference_x = self.test_x
+        if inference_data is not None:
+            inference_x = inference_data
+            assert (inference_x.shape[1:] == self.test_x.shape[1:])
+
+        print("Inference data shape: {}".format(inference_x.shape))
+
+        # invert scaling for prediction
+        yhat = self.model.predict(inference_x)
+        print("Prediction shape: {}".format(yhat.shape))
+
+        return yhat
+
+    def plot_inference(self, yhat: np.ndarray, ground_truth: np.ndarray = None):
+        yhat_sequential = \
+            self.supervised_target_to_sequential(yhat, look_front=self.look_front)
+        print("Sequential shape: {}".format(yhat_sequential.shape))
+        inv_yhat = self.data_preprocessor.restore_targets(yhat_sequential)
+        print("Untransformed shape: {}".format(inv_yhat.shape))
+        inv_yhat = inv_yhat[:, 0]
+
+        # Plot the average predictions.
+        plt.plot(inv_yhat, label="Prediction", linewidth=3)
+
+        # Use the ground truth data if available.
+        if ground_truth is not None:
+            rmse = np.sqrt(mean_squared_error(ground_truth, inv_yhat))
+            print('Test RMSE: %.3f' % rmse)
+            plt.plot(ground_truth, label="Ground Truth", linewidth=3)
+
+        # Plot the single predictions.
+        start = 0
+        for y in yhat:
+            if start % 20 == 0:
+                y = self.data_preprocessor.restore_targets(y)
+                plt.plot(start + np.arange(self.look_front), y)
+            start += 1
+
+        plt.legend()
+        plt.show()
 
     @staticmethod
     def supervised_target_to_sequential(supervised_data: np.ndarray,
