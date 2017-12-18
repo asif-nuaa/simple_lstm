@@ -70,6 +70,7 @@ if __name__ == '__main__':
     lstm = SimpleLSTM()
     dataset = load_dataset(use_csv=True, csv_file_name="oasi")  # type: Dataset
     train_fraction = 0.7
+    num_train_epochs = 0
 
     use_targets_as_features = True
     if use_targets_as_features:
@@ -115,14 +116,19 @@ if __name__ == '__main__':
                       output_dimensionality=dataset.target_dimensionality,
                       checkpoint_path=last_checkpoint_file)
 
-    # lstm.train(train_x=X_train, train_y=Y_train, test_x=X_test, test_y=Y_test,
-    #            num_epochs=10, batch_size=32)
+    if num_train_epochs > 0:
+        lstm.train(train_x=X_train, train_y=Y_train, test_x=X_test, test_y=Y_test,
+                   num_epochs=num_train_epochs, batch_size=32)
 
     predictions = lstm.inference(X_test)
     pred_x, pred_y = Dataset.supervised_to_sequential_data(X_test, predictions)
 
+    restored_gt = data_preprocessor.restore_targets(test_y)
+    restored_pred = data_preprocessor.restore_targets(pred_y)
+
     from matplotlib import pylab as plt
 
-    plt.plot(pred_y, label="Prediction")
-    plt.plot(test_y, label="Original")
+    plt.plot(restored_pred, label="Prediction")
+    plt.plot(restored_gt, label="Original")
+    plt.legend()
     plt.show()

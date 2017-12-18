@@ -242,5 +242,8 @@ class DataPreprocessor(AbstractTransformer):
 
     def restore_targets(self, targets: np.ndarray) -> np.ndarray:
         empty_features = np.ones(shape=(1, self._features_shape[1]))
+        nan_mask = np.isnan(targets)
+        targets = np.nan_to_num(targets)
         _, targets = self.restore(empty_features, targets)
+        targets[nan_mask] = np.nan
         return targets
