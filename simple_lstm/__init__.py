@@ -4,9 +4,9 @@ from .creator import DatasetCreatorParams
 from .creator import DatasetCreator
 from .creator import gaussian
 from .loader import DatasetLoader
-from .preprocessing import DataPreprocessor
-from .preprocessing import DataScaler
-from .preprocessing import AbstractTransformer
-from .preprocessing import RelativeDifference
+from .data_transformers import DataPreprocessor
+from .data_transformers import DataScaler
+from .data_transformers import AbstractTransformer
+from .data_transformers import RelativeDifference
 from .saver import get_saver_callback
 from .lstm import SimpleLSTM

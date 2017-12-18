@@ -6,6 +6,7 @@ import numpy as np
 # Make sure to use CPU only version, as for LSTM networks it is faster than GPU based.
 os.environ['CUDA_VISIBLE_DEVICES'] = '-1'
 from keras.models import Sequential
+from keras.optimizers import Optimizer
 from keras.layers import LSTM
 from keras.layers import Dense
 from keras.layers import RepeatVector
@@ -20,13 +21,7 @@ from matplotlib import pylab as plt
 from sklearn.metrics import mean_squared_error
 
 from simple_lstm import Settings
-from simple_lstm import DatasetLoader
-from simple_lstm import Dataset
-from simple_lstm import DatasetCreatorParams
-from simple_lstm import DatasetCreator
 from simple_lstm import get_saver_callback
-from simple_lstm import DataPreprocessor
-from simple_lstm import DataScaler
 
 
 class SimpleLSTM:
@@ -34,189 +29,28 @@ class SimpleLSTM:
 
         self.start_time = datetime.now().strftime("%d.%m-%H.%M")
 
-        # Data
-        self.use_csv_file = True
-
-        self.dataset = None  # type: Dataset
-        self.use_targets_as_feature = True
-
-        self.csv_path = os.path.join(Settings.dataset_root, "oasi.csv")
-        self.meta_data_path = os.path.join(Settings.dataset_root, "oasi.json")
-
-        # Preprocessing
-        self.data_preprocessor = None  # type: DataPreprocessor
-        self.transfomers = [DataScaler()]
-
         # Model
         self.model = None  # type: Sequential
+        self.optimizer = None  # type: Optimizer
         self.model_callbacks = []  # type: list
 
-        self.encoding_units = [15]
-        self.decoding_units = [15]
+        self.encoding_units = [256]
+        self.decoding_units = [256]
 
         self.look_back = int(2 * 24 * 2)
         self.look_front = int(1 * 24 * 2)
 
         # Training
-        self.num_epochs = 5
-        self.batch_size = 32
-        self.train_fraction = 0.7
         self.lr = 0.002
 
-        self.X = None  # type: np.ndarray
-        self.Y = None  # type: np.ndarray
-        self.train_x = None  # type: np.ndarray
-        self.train_y = None  # type: np.ndarray
-        self.test_x = None  # type: np.ndarray
-        self.test_y = None  # type: np.ndarray
-
         # Status
-        self.status_string = "{}_use-targets-{}_look-back-{}_" \
+        self.status_string = "{}_look-back-{}_" \
                              "look-front-{}_units-e-{}_units-d-{}".format(
-            self.start_time, self.use_targets_as_feature,
-            self.look_back, self.look_front, self.encoding_units, self.decoding_units)
+            self.start_time, self.look_back, self.look_front, self.encoding_units,
+            self.decoding_units)
 
-    def run(self):
-
-        self.load_data()
-
-        self.plot_dataframe(features=self.dataset.features, targets=self.dataset.targets,
-                            feature_names=self.dataset.feature_names,
-                            target_names=self.dataset.target_names)
-
-        # Preprocess the data by scaling, smoothing and shifting.
-        self.preprocess_data()
-
-        self.plot_dataframe(features=self.dataset.features, targets=self.dataset.targets,
-                            feature_names=self.dataset.feature_names,
-                            target_names=self.dataset.target_names)
-
-        self.prepare_train_test_data()
-        self.create_model()
-        self.train()
-        yhat = self.inference()
-
-        self.plot_inference(yhat)
-
-    def load_data(self):
-        if self.use_csv_file:
-            dataset_loader = DatasetLoader(csv_path=self.csv_path,
-                                           meta_data_path=self.meta_data_path)
-            self.dataset = dataset_loader.load()
-        else:
-            functions = {
-                lambda x: np.sin(0.3 * x),
-                lambda x: 0.5 * np.cos(0.3423 * x),
-                lambda x: 0.7 * np.cos(1.2 * x),
-                lambda x: 1.2 * np.sin(1.45 * x)}
-            dataset_creator_params = DatasetCreatorParams(
-                num_features=3, num_targets=1, functions=functions, sample_dx=1.,
-                frequency_scale=0.05, num_samples=10000, random_seed=1, randomize=False)
-            dataset_creator = DatasetCreator(params=dataset_creator_params)
-            self.dataset = dataset_creator.create()
-
-        if self.use_targets_as_feature:
-            self.dataset.set_targets_as_features()
-
-        print("Raw data shapes:"
-              "\nFeatures: {} (observations, num features)"
-              "\nTargets:  {} (observations, num targets".format(
-            self.dataset.features.shape, self.dataset.targets.shape))
-
-    def preprocess_data(self):
-
-        self.data_preprocessor = DataPreprocessor(self.transfomers)
-
-        # Fit the training data to the transformers.
-        num_training_data = int(np.round(self.train_fraction * self.dataset.num_samples))
-        self.data_preprocessor.fit(features=self.dataset.features[:num_training_data, :],
-                                   targets=self.dataset.targets[:num_training_data, :])
-
-        # Transform the entire dataset using the transformers.
-        transormed_features, transformed_targets = self.data_preprocessor.transform(
-            self.dataset.features, self.dataset.targets)
-
-        self.dataset.features = transormed_features
-        self.dataset.targets = transformed_targets
-
-    @staticmethod
-    def create_supervised_data(features: np.ndarray, targets: np.ndarray,
-                               look_back: int, look_front: int) -> tuple:
-        """
-        Creates a supervised representation of the data, i.e. a three dimensional array with the following dimensions:
-        X.shape = (num_supervised_samples, look_back, num_features)
-        Y.shape = (num_supervised_samples, look_front, num_targets)
-
-        :param features: Numpy array (2D) of raw features (each row corresponds to one
-        single time measurement)
-        :param targets: Numpy array (2D) of raw targets (each row corresponds to one
-        single time measurement)
-        :param look_back: Number of steps to look back (memory) in the features set.
-        :param look_front: Number of steps to look front (predict) in the target set.
-        :return: A redundant supervised representation of the input data.
-        """
-        X = []  # type: list
-        Y = []  # type: list
-
-        # Need 2-dimensional data as input.
-        assert (len(features.shape) == len(targets.shape) == 2)
-
-        num_samples = features.shape[0]
-        assert (num_samples == targets.shape[0])
-
-        # Move a window of size look_back over the features predicting a successive
-        # window of size look_front in the targets.
-        for i in range(num_samples - look_back - look_front):
-            X.append(features[i:i + look_back, :])
-            Y.append(targets[i + look_back:i + look_back + look_front, :])
-
-        # Vectorize the data.
-        X = np.array(X)
-        Y = np.array(Y)
-
-        # Handle the case where either the features or the targets are one dimensional
-        # (add a new dimension as the slices created in the sliding window are only one
-        #  dimensional if there is a single dimension in the feature/target).
-        if len(X.shape) == 2:
-            X = X[:, :, np.newaxis]
-        if len(Y.shape) == 2:
-            Y = Y[:, :, np.newaxis]
-
-        return X, Y
-
-    def prepare_train_test_data(self):
-        self.X, self.Y = self.create_supervised_data(features=self.dataset.features,
-                                                     targets=self.dataset.targets,
-                                                     look_back=self.look_back,
-                                                     look_front=self.look_front)
-
-        print("Supervised data shapes:"
-              "\nX: {} (batch, window size, num features),"
-              "\nY: {} (batch, prediction window size, num features)".format(
-            self.X.shape, self.Y.shape))
-
-        # Split the data into train test.
-        self.train_x, self.train_y, self.test_x, self.test_y = self.train_test_split(
-            features=self.X, targets=self.Y, train_fraction=self.train_fraction)
-
-        print("Train data:"
-              "\n\tFeatures: {}"
-              "\n\tTargets:  {}".format(self.train_x.shape, self.train_y.shape))
-
-        print("Test data:"
-              "\n\tFeatures: {}"
-              "\n\tTargets:  {}".format(self.test_x.shape, self.test_y.shape))
-
-        # Create a learning model and train in on the train data.
-
-        print("Encoding units: {}".format(self.encoding_units))
-        print("Decoding units: {}".format(self.decoding_units))
-        print("Look back: {}".format(self.look_back))
-        print("Features in: {}".format(self.X.shape[2]))
-        print("Look front: {}".format(self.look_front))
-        print("Features out: {}".format(self.Y.shape[2]))
-
-    def create_model(self, checkpoint_path: str = None):
+    def create_model(self, input_dimensionality: int, output_dimensionality: int,
+                     checkpoint_path: str = None, ):
         if checkpoint_path is None:
             self.model = Sequential()
             saver_callback = get_saver_callback(checkpoint_dir=Settings.checkpoint_root,
@@ -225,20 +59,21 @@ class SimpleLSTM:
 
             # Encoder
             if len(self.encoding_units) == 1:
-                self.model.add(LSTM(units=self.encoding_units[0],
-                                    input_shape=(
-                                        self.look_back, self.X.shape[2]),
-                                    return_sequences=False))
+                self.model.add(
+                    LSTM(units=self.encoding_units[0],
+                         input_shape=(self.look_back, input_dimensionality),
+                         return_sequences=False))
                 # shape: (None, self.encoding_units[0])
             else:
-                self.model.add(LSTM(units=self.encoding_units[0],
-                                    input_shape=(
-                                        self.look_back, self.X.shape[2]),
-                                    return_sequences=True))
+                self.model.add(
+                    LSTM(units=self.encoding_units[0],
+                         input_shape=(self.look_back, input_dimensionality),
+                         return_sequences=True))
                 # shape: (None, look_back, self.encoding_units[0])
 
                 for units in self.encoding_units[1:-1]:
-                    self.model.add(LSTM(units=units, return_sequences=True))
+                    self.model.add(
+                        LSTM(units=units, return_sequences=True))
                     # shape: (None, look_back, units)
 
                 self.model.add(
@@ -246,17 +81,20 @@ class SimpleLSTM:
                 # shape: (None, self.encoding_units[-1])
 
             # Bridge between encoder and decoder.
-            self.model.add(RepeatVector(self.look_front))
+            self.model.add(
+                RepeatVector(self.look_front))
             # shape: (None, self.look_front, self.encoding_units[-1])
 
             # Decoder.
             for units in self.decoding_units:
-                self.model.add(LSTM(units=units, return_sequences=True))
+                self.model.add(
+                    LSTM(units=units, return_sequences=True))
                 # shape: (None, self.look_front, units)
 
             # Readout layers (apply the same dense layer to all self.look_front matrices
             # coming from the previous layer).
-            self.model.add(TimeDistributed(Dense(self.Y.shape[2])))
+            self.model.add(
+                TimeDistributed(Dense(output_dimensionality)))
             # shape: (None, self.look_front, Y.shape[2])
 
             self.model.add(Activation("linear"))
@@ -275,28 +113,22 @@ class SimpleLSTM:
 
         print(self.model.summary())
 
-    def train(self):
-        history = self.model.fit(self.train_x, self.train_y, epochs=self.num_epochs,
-                                 batch_size=self.batch_size,
-                                 validation_data=(self.test_x, self.test_y), verbose=1,
-                                 shuffle=False, callbacks=self.model_callbacks)
+    def train(self, train_x: np.ndarray, train_y: np.ndarray, test_x: np.ndarray,
+              test_y: np.ndarray, num_epochs: int, batch_size: int = 32):
+        history = self.model.fit(train_x, train_y, epochs=num_epochs,
+                                 batch_size=batch_size, validation_data=(test_x, test_y),
+                                 verbose=1, shuffle=False, callbacks=self.model_callbacks)
 
         plt.plot(history.history['loss'], label='train')
         plt.plot(history.history['val_loss'], label='test')
         plt.legend()
         plt.show()
 
-    def inference(self, inference_data: np.ndarray = None) -> np.ndarray:
+    def inference(self, test_x: np.ndarray) -> np.ndarray:
 
-        inference_x = self.test_x
-        if inference_data is not None:
-            inference_x = inference_data
-            assert (inference_x.shape[1:] == self.test_x.shape[1:])
+        print("Inference data shape: {}".format(test_x.shape))
 
-        print("Inference data shape: {}".format(inference_x.shape))
-
-        # invert scaling for prediction
-        yhat = self.model.predict(inference_x)
+        yhat = self.model.predict(test_x)
         print("Prediction shape: {}".format(yhat.shape))
 
         return yhat
@@ -385,21 +217,3 @@ class SimpleLSTM:
         fig.suptitle("Input dataset (blue: feature, red: target)")
         gs.tight_layout(fig, rect=[0.01, 0, 0.99, 0.95])
         plt.show()
-
-    @staticmethod
-    def train_test_split(features: np.ndarray, targets: np.ndarray,
-                         train_fraction: float) -> tuple:
-        assert (features.shape[0] == targets.shape[0])
-
-        num_samples = features.shape[0]
-        num_train_samples = int(np.round(train_fraction * num_samples))
-
-        # Keep the first num_train_samples as training samples.
-        train_x = features[:num_train_samples]
-        train_y = targets[:num_train_samples]
-
-        # The remaining samples for testing.
-        test_x = features[num_train_samples:]
-        test_y = targets[num_train_samples:]
-
-        return train_x, train_y, test_x, test_y
