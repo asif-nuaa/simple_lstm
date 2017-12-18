@@ -1,5 +1,6 @@
 import json
 import os
+from datetime import datetime
 from enum import Enum
 from typing import List
 
@@ -130,6 +131,8 @@ class DatasetLoader:
         dataframe = dataframe[[time_name, *self.__feature_names, *self.__target_names]]
 
         self.__timestamp = dataframe.values[:, 0].copy()
+        self.__timestamp = np.array([datetime.strptime(date, '%Y-%m-%d %H:%M:%S')
+                                     for date in self.__timestamp])
         dataframe.drop(labels=dataframe.columns[0], inplace=True, axis=1)
 
         self.__feature_indices = [i for i in range(len(self.__feature_names))]
