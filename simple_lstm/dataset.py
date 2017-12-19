@@ -227,6 +227,6 @@ class Dataset:
             ax.plot(target, color="red")
             ax.set_title(target_name)
 
-        fig.suptitle("Input Dataset (blue: feature, red: target)")
+        fig.suptitle("Input dataset {}-{}".format(self.timestamp[0], self.timestamp[-1]))
         gs.tight_layout(fig, rect=[0.01, 0, 0.99, 0.95])
         plt.show()

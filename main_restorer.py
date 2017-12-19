@@ -5,7 +5,7 @@ import numpy as np
 from matplotlib import pylab as plt
 
 from simple_lstm import DataPreprocessor
-from simple_lstm import DataScaler, RelativeDifference
+from simple_lstm import DataScaler
 from simple_lstm import Dataset
 from simple_lstm import DatasetCreator, DatasetCreatorParams
 from simple_lstm import DatasetLoader
@@ -21,7 +21,6 @@ def last_checkpoint(checkpoint_dir: str = Settings.checkpoint_root):
     checkpoint_files = [os.path.join(checkpoint_dir, c) for c in checkpoint_files]
     checkpoint_files = sorted(checkpoint_files, key=os.path.getctime, reverse=True)
     last_checkpoint_file = checkpoint_files[0]
-    print("Loading checkpoint {}.".format(last_checkpoint_file))
     return last_checkpoint_file
 
 
@@ -48,13 +47,15 @@ def load_dataset(use_csv: bool = True, csv_file_name: str = "oasi"):
 
 
 def preprocess_dataset(dataset: Dataset, data_transformers: list,
-                       train_fraction: float) -> DataPreprocessor:
+                       preprocessing_fit_fraction: float) -> DataPreprocessor:
     data_preprocessor = DataPreprocessor([dt for dt in data_transformers])
 
-    # Fit the training data to the transformers.
-    num_training_data = int(np.round(train_fraction * dataset.num_samples))
-    data_preprocessor.fit(features=dataset.features[:num_training_data, :],
-                          targets=dataset.targets[:num_training_data, :])
+    # Fit the data to the transformers.
+    num_fit_samples = int(np.round(preprocessing_fit_fraction * dataset.num_samples))
+    print("Fitting data preprocessor on {} samples of {}".format(num_fit_samples,
+                                                                 dataset.num_samples))
+    data_preprocessor.fit(features=dataset.features[:num_fit_samples, :],
+                          targets=dataset.targets[:num_fit_samples, :])
 
     # Transform the entire dataset using the transformers.
     transormed_features, transformed_targets = data_preprocessor.transform(
@@ -73,7 +74,10 @@ if __name__ == '__main__':
 
     lstm = SimpleLSTM()
     dataset = load_dataset(use_csv=True, csv_file_name="oasi")  # type: Dataset
-    train_fraction = 0.7
+
+    train_fraction = 0.01
+    test_fraction = 1.0 - train_fraction
+    preprocessing_fit_fraction = 1.0
     num_train_epochs = 0
 
     use_targets_as_features = True
@@ -87,8 +91,8 @@ if __name__ == '__main__':
 
     # Preprocessing the data
     print("Preprocessing the data")
-    data_preprocessor = preprocess_dataset(dataset, [RelativeDifference(), DataScaler()],
-                                           train_fraction)  # type: DataPreprocessor
+    data_preprocessor = preprocess_dataset(dataset, [DataScaler()],
+                                           preprocessing_fit_fraction)  # type: DataPreprocessor
 
     # Split the data into train test.
     train_x, train_y, test_x, test_y = dataset.train_test_split(
@@ -130,7 +134,7 @@ if __name__ == '__main__':
     ax = f.add_subplot(111)
 
     start = 0
-    for pred, gt in predictions:
+    for pred in predictions:
         l = pred.shape[0]
         num_feat = pred.shape[1]
 
