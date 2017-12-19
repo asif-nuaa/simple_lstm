@@ -11,6 +11,7 @@ from simple_lstm import DatasetCreator, DatasetCreatorParams
 from simple_lstm import DatasetLoader
 from simple_lstm import Settings
 from simple_lstm import SimpleLSTM
+from simple_lstm import mean_squared_error
 
 
 def last_checkpoint(checkpoint_dir: str = Settings.checkpoint_root):
@@ -133,6 +134,13 @@ if __name__ == '__main__':
                    num_epochs=num_train_epochs, batch_size=32)
 
     predictions = lstm.inference(X_test)
+
+    # Compute the errors in the predictions.
+    for target in range(dataset.target_dimensionality):
+        target_prediction = predictions[:, :, target].copy()
+        target_gt = Y_test[:, :, target].copy()
+        mse = mean_squared_error(predictions=target_prediction, ground_truth=target_gt)
+        print("MSE for {} is {}".format(dataset.target_names[target], mse))
 
     f = plt.figure()
     for target in range(dataset.target_dimensionality):
