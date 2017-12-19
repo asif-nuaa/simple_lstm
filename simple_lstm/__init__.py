@@ -8,5 +8,7 @@ from .data_transformers import DataPreprocessor
 from .data_transformers import DataScaler
 from .data_transformers import AbstractTransformer
 from .data_transformers import RelativeDifference
+from .data_transformers import AbsTransformer
+from .data_transformers import ShiftTransformer
 from .saver import get_saver_callback
 from .lstm import SimpleLSTM
