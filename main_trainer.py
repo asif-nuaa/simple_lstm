@@ -59,12 +59,16 @@ def preprocess_dataset(dataset: Dataset, data_transformers: list,
 if __name__ == '__main__':
 
     lstm = SimpleLSTM()
+    lstm.encoding_units = [256]
+    lstm.decoding_units = [256]
+    lstm.look_back = 36
+    lstm.look_front = 12
     dataset = load_dataset(use_csv=True, csv_file_name="oasi")  # type: Dataset
 
     train_fraction = 0.7
     test_fraction = 1.0 - train_fraction
     preprocessing_fit_fraction = train_fraction
-    num_train_epochs = 10
+    num_train_epochs = 60
 
     use_targets_as_features = True
     if use_targets_as_features:
@@ -116,20 +120,19 @@ if __name__ == '__main__':
     predictions = lstm.inference(X_test)
 
     f = plt.figure()
-    ax = f.add_subplot(111)
+    for target in range(dataset.target_dimensionality):
+        ax = f.add_subplot(dataset.target_dimensionality, 1, target + 1)
+        start = 0
+        for pred in predictions:
+            l = len(pred[:, target])
+            if start % 20 == 0:
+                x_range = np.arange(start, l + start) + lstm.look_back
+                ax.plot(x_range, pred[:, target])
+            start += 1
 
-    start = 0
-    for pred in predictions:
-        l = pred.shape[0]
-        num_feat = pred.shape[1]
+        ax.plot(test_y[:, target], label="Ground truth", linewidth=2.5)
+        ax.set_title(dataset.target_names[target])
 
-        if start % 20 == 0:
-            x_range = np.arange(start, l + start)
-
-            ax.plot(x_range, pred)
-        start += 1
-
-    ax.plot(test_y, label="gt", linewidth=2.5)
     plt.legend()
     plt.tight_layout()
     plt.show()
@@ -142,35 +145,38 @@ if __name__ == '__main__':
     # Plot the predictions
     test_time = dataset.timestamp[-len(restored_pred):]
 
-    fig = plt.figure()
-    ax = fig.add_subplot(111)
+    f = plt.figure()
+    for target in range(dataset.target_dimensionality):
+        target_name = dataset.target_names[target]
+        ax = f.add_subplot(dataset.target_dimensionality, 1, target + 1)
 
-    x_tick_locator = mdates.DayLocator(interval=1)
-    # Mark every 6 hours
-    x_min_tick_locator = mdates.HourLocator()
+        x_tick_locator = mdates.DayLocator(interval=1)
+        # Mark every 6 hours
+        x_min_tick_locator = mdates.HourLocator()
 
-    formatter = mdates.DateFormatter("%d %b '%y")
+        formatter = mdates.DateFormatter("%d %b '%y")
 
-    ax.plot(test_time, restored_pred, label="Prediction")
-    ax.plot(test_time, restored_gt, label="Original")
-    ax.legend()
+        ax.plot(test_time, restored_pred[:, target], label="Prediction")
+        ax.plot(test_time, restored_gt[:, target], label="Original")
+        ax.set_title(target_name)
+        ax.legend()
 
-    ax.xaxis.set_major_locator(x_tick_locator)
-    ax.xaxis.set_major_formatter(formatter)
+        ax.xaxis.set_major_locator(x_tick_locator)
+        ax.xaxis.set_major_formatter(formatter)
 
-    ax.xaxis.set_minor_locator(x_min_tick_locator)
+        ax.xaxis.set_minor_locator(x_min_tick_locator)
 
-    # Plot a grid
-    ax.minorticks_on()
-    # Customize the major grid
-    ax.grid(which='major', linestyle=':', linewidth='1', color='black')
-    # Customize the minor grid
-    ax.grid(which='minor', linestyle=':', linewidth='0.5', color='gray')
+        # Plot a grid
+        ax.minorticks_on()
+        # Customize the major grid
+        ax.grid(which='major', linestyle=':', linewidth='1', color='black')
+        # Customize the minor grid
+        ax.grid(which='minor', linestyle=':', linewidth='0.5', color='gray')
 
-    # Format the coordiante box
-    ax.format_xdata = mdates.DateFormatter("%d %b '%y - %H:%M")
+        # Format the coordiate box
+        ax.format_xdata = mdates.DateFormatter("%d %b '%y - %H:%M")
 
-    fig.autofmt_xdate()
+    f.autofmt_xdate()
 
     plt.xticks(rotation=45)
     plt.tight_layout()

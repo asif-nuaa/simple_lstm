@@ -15,7 +15,7 @@
     {
       "col_index": 2,
       "name": "Chiasso_610 02 06_NO2",
-      "type": "feature",
+      "type": "target",
       "normalize": true
     },
     {
@@ -27,7 +27,7 @@
     {
       "col_index": 4,
       "name": "Chiasso_610 02 06_O3",
-      "type": "feature",
+      "type": "target",
       "normalize": true
     },
     {
