@@ -5,7 +5,7 @@ import numpy as np
 from matplotlib import pylab as plt
 
 from simple_lstm import DataPreprocessor
-from simple_lstm import DataScaler
+from simple_lstm import DataScaler, RelativeDifference
 from simple_lstm import Dataset
 from simple_lstm import DatasetCreator, DatasetCreatorParams
 from simple_lstm import DatasetLoader
@@ -20,7 +20,9 @@ def last_checkpoint(checkpoint_dir: str = Settings.checkpoint_root):
     checkpoint_files = os.listdir(checkpoint_dir)
     checkpoint_files = [os.path.join(checkpoint_dir, c) for c in checkpoint_files]
     checkpoint_files = sorted(checkpoint_files, key=os.path.getctime, reverse=True)
-    return checkpoint_files[0]
+    last_checkpoint_file = checkpoint_files[0]
+    print("Loading checkpoint {}.".format(last_checkpoint_file))
+    return last_checkpoint_file
 
 
 def load_dataset(use_csv: bool = True, csv_file_name: str = "oasi"):
@@ -85,7 +87,7 @@ if __name__ == '__main__':
 
     # Preprocessing the data
     print("Preprocessing the data")
-    data_preprocessor = preprocess_dataset(dataset, [DataScaler()],
+    data_preprocessor = preprocess_dataset(dataset, [RelativeDifference(), DataScaler()],
                                            train_fraction)  # type: DataPreprocessor
 
     # Split the data into train test.
@@ -123,6 +125,26 @@ if __name__ == '__main__':
                    num_epochs=num_train_epochs, batch_size=32)
 
     predictions = lstm.inference(X_test)
+
+    f = plt.figure()
+    ax = f.add_subplot(111)
+
+    start = 0
+    for pred, gt in predictions:
+        l = pred.shape[0]
+        num_feat = pred.shape[1]
+
+        if start % 20 == 0:
+            x_range = np.arange(start, l + start)
+
+            ax.plot(x_range, pred)
+        start += 1
+
+    ax.plot(test_y, label="gt", linewidth=2.5)
+    plt.legend()
+    plt.tight_layout()
+    plt.show()
+
     pred_x, pred_y = Dataset.supervised_to_sequential_data(X_test, predictions)
 
     restored_gt = data_preprocessor.restore_targets(test_y)

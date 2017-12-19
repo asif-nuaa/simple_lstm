@@ -24,6 +24,10 @@ class AbstractTransformer(ABC):
     def restore(self, features: np.ndarray, targets: np.ndarray) -> tuple:
         pass
 
+    @abstractmethod
+    def name(self) -> str:
+        pass
+
 
 class AbsTransformer(AbstractTransformer):
     def __init__(self):
@@ -56,6 +60,9 @@ class AbsTransformer(AbstractTransformer):
 
         return self.transform(features, targets)
 
+    def name(self)-> str:
+        return "Abs"
+
 
 class ShiftTransformer(AbstractTransformer):
     def __init__(self, shift: float = 0):
@@ -78,6 +85,9 @@ class ShiftTransformer(AbstractTransformer):
         self._targets_shape = features.shape
 
         return self.transform(features, targets)
+
+    def name(self)->str:
+        return "Shift_{}".format(self.__shift)
 
 
 class DataScaler(AbstractTransformer):
@@ -128,6 +138,9 @@ class DataScaler(AbstractTransformer):
 
         return self.__target_scaler.inverse_transform(targets)
 
+    def name(self)->str:
+        return "Scale"
+
 
 class RelativeDifference(AbstractTransformer):
     def __init__(self):
@@ -173,6 +186,9 @@ class RelativeDifference(AbstractTransformer):
 
     def fit(self, features: np.ndarray, targets: np.ndarray) -> tuple:
         return self.transform(features, targets)
+
+    def name(self)->str:
+        return "Diff"
 
 
 class DataPreprocessor(AbstractTransformer):
@@ -247,3 +263,9 @@ class DataPreprocessor(AbstractTransformer):
         _, targets = self.restore(empty_features, targets)
         targets[nan_mask] = np.nan
         return targets
+
+    def name(self)->str:
+        s = []
+        for transformer in self.__transformers:
+            s.append(transformer.name)
+        return "_".join(s)
