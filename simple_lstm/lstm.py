@@ -34,11 +34,17 @@ class SimpleLSTM:
         self.optimizer = None  # type: Optimizer
         self.model_callbacks = []  # type: list
 
-        self.encoding_units = [256]
-        self.decoding_units = [256]
+        self.encoding_units = [512]
+        self.decoding_units = [512]
+		
+        num_hours_look_front = 32
+        num_hours_look_back = 48
+	
+        num_samples_per_hour = 2
+	 
+        self.look_back = num_hours_look_back * num_samples_per_hour
+        self.look_front = num_hours_look_front * num_samples_per_hour
 
-        self.look_back = int(2 * 24 * 2)
-        self.look_front = int(1 * 24 * 2)
 
         # Training
         self.lr = 0.001
