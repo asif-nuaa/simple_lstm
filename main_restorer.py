@@ -73,6 +73,10 @@ if __name__ == '__main__':
     print("Using checkpoint {}".format(last_checkpoint_file))
 
     lstm = SimpleLSTM()
+    lstm.encoding_units = [32, 32, 32]
+    lstm.decoding_units = [32, 32, 32]
+    lstm.look_back = 36
+    lstm.look_front = 12
     dataset = load_dataset(use_csv=True, csv_file_name="oasi")  # type: Dataset
 
     train_fraction = 0.01
@@ -131,20 +135,19 @@ if __name__ == '__main__':
     predictions = lstm.inference(X_test)
 
     f = plt.figure()
-    ax = f.add_subplot(111)
+    for target in range(dataset.target_dimensionality):
+        ax = f.add_subplot(dataset.target_dimensionality, 1, target + 1)
+        start = 0
+        for pred in predictions:
+            l = len(pred[:, target])
+            if start % 20 == 0:
+                x_range = np.arange(start, l + start) + lstm.look_back
+                ax.plot(x_range, pred[:, target])
+            start += 1
 
-    start = 0
-    for pred in predictions:
-        l = pred.shape[0]
-        num_feat = pred.shape[1]
+        ax.plot(test_y[:, target], label="Ground truth", linewidth=2.5)
+        ax.set_title(dataset.target_names[target])
 
-        if start % 20 == 0:
-            x_range = np.arange(start, l + start)
-
-            ax.plot(x_range, pred)
-        start += 1
-
-    ax.plot(test_y, label="gt", linewidth=2.5)
     plt.legend()
     plt.tight_layout()
     plt.show()
@@ -157,36 +160,43 @@ if __name__ == '__main__':
     # Plot the predictions
     test_time = dataset.timestamp[-len(restored_pred):]
 
-    fig = plt.figure()
-    ax = fig.add_subplot(111)
+    for target in range(dataset.target_dimensionality):
+        f = plt.figure()
+        ax = f.add_subplot(111)
 
-    x_tick_locator = mdates.DayLocator(interval=1)
-    # Mark every 6 hours
-    x_min_tick_locator = mdates.HourLocator()
+        target_name = dataset.target_names[target]
 
-    formatter = mdates.DateFormatter("%d %b '%y")
+        x_tick_locator = mdates.DayLocator(interval=7)
+        # Mark every 6 hours
+        x_min_tick_locator = mdates.HourLocator()
 
-    ax.plot(test_time, restored_pred, label="Prediction")
-    ax.plot(test_time, restored_gt, label="Original")
-    ax.legend()
+        formatter = mdates.DateFormatter("%d %b '%y")
 
-    ax.xaxis.set_major_locator(x_tick_locator)
-    ax.xaxis.set_major_formatter(formatter)
+        ax.plot(test_time, restored_pred[:, target], label="Prediction")
+        ax.plot(test_time, restored_gt[:, target], label="Original")
 
-    ax.xaxis.set_minor_locator(x_min_tick_locator)
+        ax.set_title(target_name)
+        ax.legend()
 
-    # Plot a grid
-    ax.minorticks_on()
-    # Customize the major grid
-    ax.grid(which='major', linestyle=':', linewidth='1', color='black')
-    # Customize the minor grid
-    ax.grid(which='minor', linestyle=':', linewidth='0.5', color='gray')
+        ax.xaxis.set_major_locator(x_tick_locator)
+        ax.xaxis.set_major_formatter(formatter)
 
-    # Format the coordiante box
-    ax.format_xdata = mdates.DateFormatter("%d %b '%y - %H:%M")
+        ax.xaxis.set_minor_locator(x_min_tick_locator)
 
-    fig.autofmt_xdate()
+        # Plot a grid
+        ax.minorticks_on()
+        # Customize the major grid
+        ax.grid(which='major', linestyle=':', linewidth='1', color='black')
+        # Customize the minor grid
+        ax.grid(which='minor', linestyle=':', linewidth='0.5', color='gray')
 
-    plt.xticks(rotation=45)
-    plt.tight_layout()
+        # Format the coordiate box
+        ax.format_xdata = mdates.DateFormatter("%d %b '%y - %H:%M")
+
+        f.suptitle(target_name)
+        f.autofmt_xdate()
+
+        plt.xticks(rotation=45)
+        plt.tight_layout()
+
     plt.show()

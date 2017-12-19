@@ -141,6 +141,3 @@ class DatasetLoader:
 
         # Make sure the data is all in floating point representation.
         self.__dataframe = dataframe.values.astype(np.float32)
-
-        self.__timestamp = self.__timestamp[0:2000]
-        self.__dataframe = self.__dataframe[0:2000]

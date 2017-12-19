@@ -59,8 +59,8 @@ def preprocess_dataset(dataset: Dataset, data_transformers: list,
 if __name__ == '__main__':
 
     lstm = SimpleLSTM()
-    lstm.encoding_units = [256]
-    lstm.decoding_units = [256]
+    lstm.encoding_units = [32, 32, 32]
+    lstm.decoding_units = [32, 32, 32]
     lstm.look_back = 36
     lstm.look_front = 12
     dataset = load_dataset(use_csv=True, csv_file_name="oasi")  # type: Dataset
@@ -68,7 +68,7 @@ if __name__ == '__main__':
     train_fraction = 0.7
     test_fraction = 1.0 - train_fraction
     preprocessing_fit_fraction = train_fraction
-    num_train_epochs = 60
+    num_train_epochs = 0
 
     use_targets_as_features = True
     if use_targets_as_features:
@@ -150,7 +150,7 @@ if __name__ == '__main__':
         target_name = dataset.target_names[target]
         ax = f.add_subplot(dataset.target_dimensionality, 1, target + 1)
 
-        x_tick_locator = mdates.DayLocator(interval=1)
+        x_tick_locator = mdates.DayLocator(interval=7)
         # Mark every 6 hours
         x_min_tick_locator = mdates.HourLocator()
 
@@ -158,6 +158,7 @@ if __name__ == '__main__':
 
         ax.plot(test_time, restored_pred[:, target], label="Prediction")
         ax.plot(test_time, restored_gt[:, target], label="Original")
+
         ax.set_title(target_name)
         ax.legend()
 
