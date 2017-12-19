@@ -10,6 +10,7 @@ from simple_lstm import Dataset
 from simple_lstm import DatasetCreator, DatasetCreatorParams
 from simple_lstm import DatasetLoader
 from simple_lstm import Settings
+from simple_lstm import mean_squared_error
 from simple_lstm import SimpleLSTM
 
 
@@ -158,6 +159,10 @@ if __name__ == '__main__':
 
         ax.plot(test_time, restored_pred[:, target], label="Prediction")
         ax.plot(test_time, restored_gt[:, target], label="Original")
+
+        mse = mean_squared_error(predictions=restored_pred[:, target],
+                                 ground_truth=restored_gt[:, target])
+        print("MSE for {} is {}".format(target_name, mse))
 
         ax.set_title(target_name)
         ax.legend()
