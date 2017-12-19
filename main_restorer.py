@@ -10,8 +10,8 @@ from simple_lstm import Dataset
 from simple_lstm import DatasetCreator, DatasetCreatorParams
 from simple_lstm import DatasetLoader
 from simple_lstm import Settings
-from simple_lstm import mean_squared_error
 from simple_lstm import SimpleLSTM
+from simple_lstm import mean_squared_error
 
 
 def last_checkpoint(checkpoint_dir: str = Settings.checkpoint_root):
@@ -135,6 +135,13 @@ if __name__ == '__main__':
 
     predictions = lstm.inference(X_test)
 
+    # Compute the errors in the predictions.
+    for target in range(dataset.target_dimensionality):
+        target_prediction = predictions[:, :, target].copy()
+        target_gt = Y_test[:, :, target].copy()
+        mse = mean_squared_error(predictions=target_prediction, ground_truth=target_gt)
+        print("MSE for {} is {}".format(dataset.target_names[target], mse))
+
     f = plt.figure()
     for target in range(dataset.target_dimensionality):
         ax = f.add_subplot(dataset.target_dimensionality, 1, target + 1)
@@ -175,10 +182,6 @@ if __name__ == '__main__':
 
         ax.plot(test_time, restored_pred[:, target], label="Prediction")
         ax.plot(test_time, restored_gt[:, target], label="Original")
-
-        mse = mean_squared_error(predictions=restored_pred[:, target],
-                                 ground_truth=restored_gt[:, target])
-        print("MSE for {} is {}".format(target_name, mse))
 
         ax.set_title(target_name)
         ax.legend()
