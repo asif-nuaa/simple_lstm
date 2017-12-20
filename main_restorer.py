@@ -1,4 +1,5 @@
 import os
+from datetime import timedelta
 
 import matplotlib.dates as mdates
 import numpy as np
@@ -9,9 +10,9 @@ from simple_lstm import DataScaler
 from simple_lstm import Dataset
 from simple_lstm import DatasetCreator, DatasetCreatorParams
 from simple_lstm import DatasetLoader
+from simple_lstm import PostProcessing
 from simple_lstm import Settings
 from simple_lstm import SimpleLSTM
-from simple_lstm import mean_squared_error
 
 
 def last_checkpoint(checkpoint_dir: str = Settings.checkpoint_root):
@@ -34,14 +35,15 @@ def load_dataset(use_csv: bool = True, csv_file_name: str = "oasi"):
         dataset = dataset_loader.load()  # type: Dataset
         return dataset
     else:
-        functions = {
+        functions = (
             lambda x: np.sin(0.3 * x),
             lambda x: 0.5 * np.cos(0.3423 * x),
             lambda x: 0.7 * np.cos(1.2 * x),
-            lambda x: 1.2 * np.sin(1.45 * x)}
+            lambda x: 1.2 * np.sin(1.45 * x))
         dataset_creator_params = DatasetCreatorParams(
-            num_features=6, num_targets=1, functions=functions, sample_dx=1.,
-            frequency_scale=0.05, num_samples=10000, random_seed=1, randomize=False)
+            num_features=2, num_targets=1, functions=functions, sample_dx=1.,
+            frequency_scale=0.05, num_samples=10000, random_seed=1, randomize=True,
+            sample_dt=timedelta(hours=1, minutes=30))
         dataset_creator = DatasetCreator(params=dataset_creator_params)
         dataset = dataset_creator.create()  # type: Dataset
         return dataset
@@ -74,18 +76,16 @@ if __name__ == '__main__':
     print("Using checkpoint {}".format(last_checkpoint_file))
 
     lstm = SimpleLSTM()
-    num_days_look_back = 2
-    num_days_look_front = 1
-	
-    num_samples_per_hour = 2
-	
-    lstm.look_back = num_days_look_back * 24 * num_samples_per_hour
-    lstm.look_front = num_days_look_front * 24 * num_samples_per_hour
+    lstm.encoding_units = [256]
+    lstm.decoding_units = [256]
+    lstm.look_back = 48
+    lstm.look_front = 32
+
     dataset = load_dataset(use_csv=True, csv_file_name="oasi")  # type: Dataset
 
-    train_fraction = 0.01
+    train_fraction = 0.7
     test_fraction = 1.0 - train_fraction
-    preprocessing_fit_fraction = 1.0
+    preprocessing_fit_fraction = 0.7
     num_train_epochs = 0
 
     use_targets_as_features = True
@@ -137,13 +137,6 @@ if __name__ == '__main__':
                    num_epochs=num_train_epochs, batch_size=32)
 
     predictions = lstm.inference(X_test)
-
-    # Compute the errors in the predictions.
-    for target in range(dataset.target_dimensionality):
-        target_prediction = predictions[:, :, target].copy()
-        target_gt = Y_test[:, :, target].copy()
-        mse = mean_squared_error(predictions=target_prediction, ground_truth=target_gt)
-        print("MSE for {} is {}".format(dataset.target_names[target], mse))
 
     f = plt.figure()
     for target in range(dataset.target_dimensionality):
@@ -203,11 +196,17 @@ if __name__ == '__main__':
 
         # Format the coordiate box
         ax.format_xdata = mdates.DateFormatter("%d %b '%y - %H:%M")
-
-        f.suptitle(target_name)
         f.autofmt_xdate()
 
         plt.xticks(rotation=45)
         plt.tight_layout()
 
     plt.show()
+
+    postprocessing = PostProcessing(dataset, X_test.shape[1], Y_test.shape[1],
+                                    predictions, data_preprocessor)
+    postprocessing.compute_daily_predictions(prediction_evaluation_hour=16)
+    postprocessing.compute_pollution_index()
+    confusion_matrix = postprocessing.create_confusion_matrix()
+    postprocessing.compute_errors()
+

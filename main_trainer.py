@@ -2,7 +2,9 @@ import os
 
 import matplotlib.dates as mdates
 import numpy as np
+
 from matplotlib import pylab as plt
+from datetime import timedelta
 
 from simple_lstm import DataPreprocessor
 from simple_lstm import DataScaler
@@ -23,14 +25,15 @@ def load_dataset(use_csv: bool = True, csv_file_name: str = "oasi"):
         dataset = dataset_loader.load()  # type: Dataset
         return dataset
     else:
-        functions = {
+        functions = (
             lambda x: np.sin(0.3 * x),
             lambda x: 0.5 * np.cos(0.3423 * x),
             lambda x: 0.7 * np.cos(1.2 * x),
-            lambda x: 1.2 * np.sin(1.45 * x)}
+            lambda x: 1.2 * np.sin(1.45 * x))
         dataset_creator_params = DatasetCreatorParams(
-            num_features=6, num_targets=1, functions=functions, sample_dx=1.,
-            frequency_scale=0.05, num_samples=10000, random_seed=1, randomize=False)
+            num_features=2, num_targets=1, functions=functions, sample_dx=1.,
+            frequency_scale=0.05, num_samples=10000, random_seed=1, randomize=True,
+            sample_dt=timedelta(hours=1, minutes=30))
         dataset_creator = DatasetCreator(params=dataset_creator_params)
         dataset = dataset_creator.create()  # type: Dataset
         return dataset
@@ -60,12 +63,17 @@ def preprocess_dataset(dataset: Dataset, data_transformers: list,
 if __name__ == '__main__':
 
     lstm = SimpleLSTM()
-    dataset = load_dataset(use_csv=True, csv_file_name="oasi")  # type: Dataset
+    lstm.encoding_units = [32]
+    lstm.decoding_units = [32]
+    lstm.look_back = 48
+    lstm.look_front = 24
+
+    dataset = load_dataset(use_csv=False, csv_file_name="oasi")  # type: Dataset
 
     train_fraction = 0.7
     test_fraction = 1.0 - train_fraction
     preprocessing_fit_fraction = train_fraction
-    num_train_epochs = 100
+    num_train_epochs = 15
 
     use_targets_as_features = True
     if use_targets_as_features:

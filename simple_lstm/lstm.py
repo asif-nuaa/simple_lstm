@@ -36,28 +36,30 @@ class SimpleLSTM:
 
         self.encoding_units = [512]
         self.decoding_units = [512]
-		
+
         num_hours_look_front = 32
         num_hours_look_back = 48
-	
+
         num_samples_per_hour = 2
-	 
+
         self.look_back = num_hours_look_back * num_samples_per_hour
         self.look_front = num_hours_look_front * num_samples_per_hour
-
 
         # Training
         self.lr = 0.001
 
         # Status
-        self.status_string = "{}_look-back-{}_" \
-                             "look-front-{}_units-e-{}_units-d-{}".format(
-            self.start_time, self.look_back, self.look_front, self.encoding_units,
-            self.decoding_units)
+        self.status_string = ""
 
     def create_model(self, input_dimensionality: int, output_dimensionality: int,
                      checkpoint_path: str = None, ):
         if checkpoint_path is None:
+
+            self.status_string = "{}_look-back-{}_" \
+            "look-front-{}_units-e-{}_units-d-{}".format(
+                self.start_time, self.look_back, self.look_front, self.encoding_units,
+                self.decoding_units)
+
             self.model = Sequential()
             saver_callback = get_saver_callback(checkpoint_dir=Settings.checkpoint_root,
                                                 status_str=self.status_string)
