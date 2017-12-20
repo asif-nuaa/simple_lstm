@@ -3,18 +3,21 @@ from datetime import datetime
 import numpy as np
 from matplotlib import pylab as plt
 
+from simple_lstm import DataPreprocessor
 from simple_lstm import Dataset
 
 
 class PostProcessing:
     def __init__(self, dataset: Dataset, look_back: int, look_front: int,
-                 predictions: np.ndarray):
+                 predictions: np.ndarray, data_preprocessor: DataPreprocessor):
         self.dataset = dataset
         self.predictions = predictions
 
         # Compute the number of look backs and look fronts.
         self.look_back = look_back
         self.look_front = look_front
+
+        self.data_preprocessor = data_preprocessor
 
         # Compute the number of samples predicted.
         self.num_predicted_samples = self.predictions.shape[0]
@@ -24,15 +27,19 @@ class PostProcessing:
                                  - self.look_front
         prediction_end_index = self.dataset.num_samples - self.look_front
 
-        print("Prediction start index: {}"
-              "Prediction end index: {}".format(
-            prediction_start_index, prediction_end_index))
-
         self.prediction_times = self.dataset.timestamp[
-                                prediction_start_index: prediction_end_index]
+                                prediction_start_index: prediction_end_index].copy()
 
         # Extract the ground truth targets.
-        self.targets = self.dataset.targets[prediction_start_index: prediction_end_index]
+        self.targets = self.dataset.targets[prediction_start_index:
+        prediction_end_index].copy()
+
+        self.prediction_list = []
+        self.ground_truth_list = []
+        self.time_range_list = []
+
+        self.prediction_pollution_indices = []
+        self.true_pollution_indices = []
 
     def compute_daily_predictions(self, prediction_evaluation_hour: int):
         # Compute the indices of the predictions starting at the
@@ -51,9 +58,6 @@ class PostProcessing:
                                "having {} prediction steps (look front)".format(
                 prediction_evaluation_hour, self.look_front))
 
-        print("Observations between evaluation hour ({}) and midnight: {}".format(
-            prediction_evaluation_hour, observations_to_midnight))
-
         # Extract the predictions associated to the starting hours together with the
         # ones up to (look_front - observations_to_midnight) predictions before
         # (which will be used to average the predictions).
@@ -69,20 +73,10 @@ class PostProcessing:
                 associated_times = self.prediction_times[prediction_start_index + 1 - (
                     self.look_front - observations_to_midnight):
                 prediction_start_index + 1]
-                print("Prediction done at {} contains the following obs".format(
-                    self.prediction_times[prediction_start_index]
-                ))
-                print("Prediction starts: {} - Ends: {}, shape: {}".format(
-                    associated_times[0], associated_times[-1],
-                    predictions_up_to_start_hour[-1].shape
-                ))
 
             else:
                 # There are no look_back predictions before the start hour.
                 predictions_up_to_start_hour.append(None)
-                print("No prediction available for{}".format(
-                    self.prediction_times[prediction_start_index]
-                ))
 
         # For each package of predictions
         # shape: ((self.look_front - observations_to_midnight) x num_features)
@@ -96,35 +90,53 @@ class PostProcessing:
                     self.__compute_mean_prediction(prediction_package)
                 )
 
+        # Restore the original scale of the valid predictions
+        num_predictions = len(mean_predictions)
+        for i in range(num_predictions):
+            pred = mean_predictions[i].copy()
+            if pred is None:
+                continue
+
+            start_time_index = prediction_evaluation_start_indices[i]
+
+            ground_truth = self.targets[start_time_index + observations_to_midnight:
+            start_time_index + observations_to_midnight + len(pred)]
+
+            time_range = self.prediction_times[
+                         start_time_index + observations_to_midnight:
+                         start_time_index + observations_to_midnight + len(pred)]
+
+            expected_len = self.look_front - observations_to_midnight
+            if len(time_range) != expected_len \
+                    or ground_truth.shape[0] != expected_len \
+                    or pred.shape[0] != expected_len:
+                continue
+
+            # Restore the original scale of the predictions.
+            pred = self.data_preprocessor.restore_targets(pred)
+
+            # Restore the original scale of the ground truth.
+            ground_truth = self.data_preprocessor.restore_targets(ground_truth)
+
+            self.prediction_list.append(pred.copy())
+            self.ground_truth_list.append(ground_truth.copy())
+            self.time_range_list.append(time_range.copy())
+
+        # Plot the resulting predictions
         for feature in range(self.dataset.target_dimensionality):
             f = plt.figure()
             ax = f.add_subplot(111)
 
-            num_predictions = len(mean_predictions)
-            for i in range(num_predictions):
-                pred = mean_predictions[i]
-                if pred is None:
-                    continue
-
-                pred = pred[:, feature]
-
-                start_time_index = prediction_evaluation_start_indices[i]
-                ground_truth = self.targets[start_time_index + observations_to_midnight:
-                                            start_time_index + observations_to_midnight + len(pred), feature]
-                time_range = self.prediction_times[start_time_index + observations_to_midnight:
-                                                   start_time_index + observations_to_midnight + len(pred)]
-
-                expected_len = self.look_front - observations_to_midnight
-                if len(time_range) != expected_len or len(ground_truth) != expected_len or len(pred) != expected_len:
-                    continue
-
-                ax.plot(time_range, pred, "r")
-                ax.plot(time_range, ground_truth, "g")
+            for pred, gt, time in zip(self.prediction_list, self.ground_truth_list,
+                                      self.time_range_list):
+                ax.plot(time, pred[:, feature], "r")
+                ax.plot(time, gt[:, feature], "g")
             ax.set_title(self.dataset.target_names[feature])
 
         plt.show()
 
-    def __compute_mean_prediction(self, prediction_package: np.ndarray) -> np.ndarray:
+    @staticmethod
+    def __compute_mean_prediction(prediction_package: np.ndarray) -> np.ndarray:
         # Compute the mean prediction for each target.
         num_targets = prediction_package.shape[2]
         mean_predictions = []
@@ -171,3 +183,114 @@ class PostProcessing:
 
         mean_predictions = np.array(mean_predictions).T
         return mean_predictions
+
+    def compute_pollution_index(self):
+        def __compute_NO2_index(values: np.ndarray, times: np.ndarray) -> int:
+            max_NO2 = np.max(values)
+            if max_NO2 <= 60:
+                return 1
+            elif max_NO2 <= 80:
+                return 2
+            elif max_NO2 <= 100:
+                return 3
+            elif max_NO2 <= 120:
+                return 4
+            elif max_NO2 <= 60:
+                return 5
+            return 6
+
+        def __compute_PM10_index(values: np.ndarray, times: np.ndarray) -> int:
+            max_PM10 = np.max(values)
+            if max_PM10 <= 37:
+                return 1
+            elif max_PM10 <= 50:
+                return 2
+            elif max_PM10 <= 62:
+                return 3
+            elif max_PM10 <= 75:
+                return 4
+            elif max_PM10 <= 100:
+                return 5
+            return 6
+
+        def __compute_O3_index(values: np.ndarray, times: np.ndarray) -> int:
+            max_O3 = np.max(values)
+            if max_O3 <= 90:
+                return 1
+            elif max_O3 <= 120:
+                return 2
+            elif max_O3 <= 150:
+                return 3
+            elif max_O3 <= 180:
+                return 4
+            elif max_O3 <= 240:
+                return 5
+            return 6
+
+        def __compute_pollution_indices(values: np.ndarray, times: np.ndarray) -> tuple:
+            index_N0 = __compute_NO2_index(values[:, 0], times)
+            index_O3 = __compute_O3_index(values[:, 1], times)
+            index_PM10 = __compute_PM10_index(values[:, 2], times)
+
+            return index_N0, index_O3, index_PM10
+
+        for pred, gt, times in zip(self.prediction_list, self.ground_truth_list,
+                                   self.prediction_times):
+            prediction_indices = __compute_pollution_indices(pred, times)
+            true_indices = __compute_pollution_indices(gt, times)
+            self.prediction_pollution_indices.append(prediction_indices)
+            self.true_pollution_indices.append(true_indices)
+
+    def create_confusion_matrix(self) -> np.ndarray:
+        confusion_matrix = np.zeros(shape=(6, 6), dtype=np.int32)
+        for pred_index, true_index in zip(self.prediction_pollution_indices,
+                                          self.true_pollution_indices):
+            p_index = np.max(pred_index)
+            gt_index = np.max(true_index)
+
+            confusion_matrix[p_index - 1, gt_index - 1] += 1
+
+        # Flip matrix upside down, so that increasing indices go from left to right,
+        # and from bottom to top.
+        flipped_confusion_matrix = confusion_matrix[::-1, :]
+        normalized_confusion = flipped_confusion_matrix.astype(float) / np.max(
+            flipped_confusion_matrix, axis=(0, 1))
+
+        fig = plt.figure()
+        ax = fig.add_subplot(111)
+        ax.imshow(normalized_confusion, interpolation='nearest')
+
+        for x in range(6):
+            for y in range(6):
+                ax.annotate(str(flipped_confusion_matrix[x][y]), xy=(y, x),
+                            horizontalalignment='center',
+                            verticalalignment='center')
+
+        plt.xticks(np.arange(6), np.arange(1, 7, 1))
+        plt.yticks(np.arange(6), np.arange(6, 0, -1))
+
+        ax.set_xlabel("True indices")
+        ax.set_ylabel("Predicted indices")
+
+        plt.show()
+
+        return confusion_matrix
+
+    def compute_errors(self):
+        max_predicted_values = []
+        max_true_values = []
+
+        for pred, gt in zip(self.prediction_list, self.ground_truth_list):
+            max_predicted_values.append(np.max(pred, axis=0))
+            max_true_values.append(np.max(gt, axis=0))
+
+        max_predicted_values = np.array(max_predicted_values)
+        max_true_values = np.array(max_true_values)
+
+        RMSE = np.sqrt(np.mean((max_predicted_values - max_true_values)**2, axis=0))
+        MAE = np.mean(np.abs(max_predicted_values - max_true_values), axis=0)
+
+        print("{:>5} {:>25} {:>25} {:>25}".format("", *self.dataset.target_names))
+        print("{:>5} {:>25.10} {:>25.10} {:>25.10}".format("RMSE", *RMSE))
+        print("{:>5} {:>25.10} {:>25.10} {:>25.10}".format("MAE", *MAE))
+

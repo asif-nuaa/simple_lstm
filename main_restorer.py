@@ -77,12 +77,12 @@ if __name__ == '__main__':
     print("Using checkpoint {}".format(last_checkpoint_file))
 
     lstm = SimpleLSTM()
-    lstm.encoding_units = [32]
-    lstm.decoding_units = [32]
+    lstm.encoding_units = [256]
+    lstm.decoding_units = [256]
     lstm.look_back = 48
-    lstm.look_front = 24
+    lstm.look_front = 32
 
-    dataset = load_dataset(use_csv=False, csv_file_name="oasi")  # type: Dataset
+    dataset = load_dataset(use_csv=True, csv_file_name="oasi")  # type: Dataset
 
     train_fraction = 0.01
     test_fraction = 1.0 - train_fraction
@@ -138,13 +138,6 @@ if __name__ == '__main__':
                    num_epochs=num_train_epochs, batch_size=32)
 
     predictions = lstm.inference(X_test)
-
-    # Compute the errors in the predictions.
-    for target in range(dataset.target_dimensionality):
-        target_prediction = predictions[:, :, target].copy()
-        target_gt = Y_test[:, :, target].copy()
-        mse = mean_squared_error(predictions=target_prediction, ground_truth=target_gt)
-        print("MSE for {} is {}".format(dataset.target_names[target], mse))
 
     f = plt.figure()
     for target in range(dataset.target_dimensionality):
@@ -204,8 +197,6 @@ if __name__ == '__main__':
 
         # Format the coordiate box
         ax.format_xdata = mdates.DateFormatter("%d %b '%y - %H:%M")
-
-        f.suptitle(target_name)
         f.autofmt_xdate()
 
         plt.xticks(rotation=45)
@@ -214,5 +205,9 @@ if __name__ == '__main__':
     plt.show()
 
     postprocessing = PostProcessing(dataset, X_test.shape[1], Y_test.shape[1],
-                                    predictions)
-    postprocessing.compute_daily_predictions(prediction_evaluation_hour=22)
+                                    predictions, data_preprocessor)
+    postprocessing.compute_daily_predictions(prediction_evaluation_hour=16)
+    postprocessing.compute_pollution_index()
+    confusion_matrix = postprocessing.create_confusion_matrix()
+    postprocessing.compute_errors()
+
