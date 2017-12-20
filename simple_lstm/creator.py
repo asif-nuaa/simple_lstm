@@ -18,7 +18,7 @@ def gaussian(x: np.ndarray) -> np.ndarray:
 class DatasetCreatorParams:
     def __init__(self, num_features: int = 9, num_targets: int = 1,
                  num_samples: int = 1000, sample_dt: timedelta = timedelta(minutes=30),
-                 sample_dx: float = np.pi / 100.0, functions: set = {np.sin, np.cos},
+                 sample_dx: float = np.pi / 100.0, functions: tuple = (np.sin, np.cos),
                  frequency_scale: float = None, amplitude_scale: float = 1.0,
                  random_seed: int = None, randomize: bool = True):
         self.num_features = num_features

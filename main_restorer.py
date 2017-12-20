@@ -1,4 +1,5 @@
 import os
+from datetime import timedelta
 
 import matplotlib.dates as mdates
 import numpy as np
@@ -9,10 +10,10 @@ from simple_lstm import DataScaler
 from simple_lstm import Dataset
 from simple_lstm import DatasetCreator, DatasetCreatorParams
 from simple_lstm import DatasetLoader
+from simple_lstm import PostProcessing
 from simple_lstm import Settings
 from simple_lstm import SimpleLSTM
 from simple_lstm import mean_squared_error
-from simple_lstm import PostProcessing
 
 
 def last_checkpoint(checkpoint_dir: str = Settings.checkpoint_root):
@@ -35,14 +36,15 @@ def load_dataset(use_csv: bool = True, csv_file_name: str = "oasi"):
         dataset = dataset_loader.load()  # type: Dataset
         return dataset
     else:
-        functions = {
+        functions = (
             lambda x: np.sin(0.3 * x),
             lambda x: 0.5 * np.cos(0.3423 * x),
             lambda x: 0.7 * np.cos(1.2 * x),
-            lambda x: 1.2 * np.sin(1.45 * x)}
+            lambda x: 1.2 * np.sin(1.45 * x))
         dataset_creator_params = DatasetCreatorParams(
-            num_features=34, num_targets=3, functions=functions, sample_dx=1.,
-            frequency_scale=0.05, num_samples=1000, random_seed=1, randomize=False)
+            num_features=2, num_targets=1, functions=functions, sample_dx=1.,
+            frequency_scale=0.05, num_samples=10000, random_seed=1, randomize=True,
+            sample_dt=timedelta(hours=1, minutes=30))
         dataset_creator = DatasetCreator(params=dataset_creator_params)
         dataset = dataset_creator.create()  # type: Dataset
         return dataset
@@ -75,10 +77,12 @@ if __name__ == '__main__':
     print("Using checkpoint {}".format(last_checkpoint_file))
 
     lstm = SimpleLSTM()
+    lstm.encoding_units = [32]
+    lstm.decoding_units = [32]
+    lstm.look_back = 48
+    lstm.look_front = 24
 
-    lstm.look_back = 96
-    lstm.look_front = 64
-    dataset = load_dataset(use_csv=True, csv_file_name="oasi")  # type: Dataset
+    dataset = load_dataset(use_csv=False, csv_file_name="oasi")  # type: Dataset
 
     train_fraction = 0.01
     test_fraction = 1.0 - train_fraction
@@ -209,5 +213,6 @@ if __name__ == '__main__':
 
     plt.show()
 
-    postprocessing = PostProcessing(dataset, X_test, Y_test, predictions)
-    postprocessing.compute_daily_predictions(prediction_evaluation_hour=16)
+    postprocessing = PostProcessing(dataset, X_test.shape[1], Y_test.shape[1],
+                                    predictions)
+    postprocessing.compute_daily_predictions(prediction_evaluation_hour=22)
