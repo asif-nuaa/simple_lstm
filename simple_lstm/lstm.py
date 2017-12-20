@@ -36,15 +36,14 @@ class SimpleLSTM:
 
         self.encoding_units = [512]
         self.decoding_units = [512]
-		
+
         num_hours_look_front = 32
         num_hours_look_back = 48
-	
+
         num_samples_per_hour = 2
-	 
+
         self.look_back = num_hours_look_back * num_samples_per_hour
         self.look_front = num_hours_look_front * num_samples_per_hour
-
 
         # Training
         self.lr = 0.001

@@ -12,6 +12,7 @@ from simple_lstm import DatasetLoader
 from simple_lstm import Settings
 from simple_lstm import SimpleLSTM
 from simple_lstm import mean_squared_error
+from simple_lstm import PostProcessing
 
 
 def last_checkpoint(checkpoint_dir: str = Settings.checkpoint_root):
@@ -40,8 +41,8 @@ def load_dataset(use_csv: bool = True, csv_file_name: str = "oasi"):
             lambda x: 0.7 * np.cos(1.2 * x),
             lambda x: 1.2 * np.sin(1.45 * x)}
         dataset_creator_params = DatasetCreatorParams(
-            num_features=6, num_targets=1, functions=functions, sample_dx=1.,
-            frequency_scale=0.05, num_samples=10000, random_seed=1, randomize=False)
+            num_features=34, num_targets=3, functions=functions, sample_dx=1.,
+            frequency_scale=0.05, num_samples=1000, random_seed=1, randomize=False)
         dataset_creator = DatasetCreator(params=dataset_creator_params)
         dataset = dataset_creator.create()  # type: Dataset
         return dataset
@@ -74,13 +75,9 @@ if __name__ == '__main__':
     print("Using checkpoint {}".format(last_checkpoint_file))
 
     lstm = SimpleLSTM()
-    num_days_look_back = 2
-    num_days_look_front = 1
-	
-    num_samples_per_hour = 2
-	
-    lstm.look_back = num_days_look_back * 24 * num_samples_per_hour
-    lstm.look_front = num_days_look_front * 24 * num_samples_per_hour
+
+    lstm.look_back = 96
+    lstm.look_front = 64
     dataset = load_dataset(use_csv=True, csv_file_name="oasi")  # type: Dataset
 
     train_fraction = 0.01
@@ -211,3 +208,6 @@ if __name__ == '__main__':
         plt.tight_layout()
 
     plt.show()
+
+    postprocessing = PostProcessing(dataset, X_test, Y_test, predictions)
+    postprocessing.compute_daily_predictions(prediction_evaluation_hour=16)
