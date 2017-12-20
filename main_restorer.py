@@ -13,7 +13,6 @@ from simple_lstm import DatasetLoader
 from simple_lstm import PostProcessing
 from simple_lstm import Settings
 from simple_lstm import SimpleLSTM
-from simple_lstm import mean_squared_error
 
 
 def last_checkpoint(checkpoint_dir: str = Settings.checkpoint_root):
@@ -84,9 +83,9 @@ if __name__ == '__main__':
 
     dataset = load_dataset(use_csv=True, csv_file_name="oasi")  # type: Dataset
 
-    train_fraction = 0.01
+    train_fraction = 0.7
     test_fraction = 1.0 - train_fraction
-    preprocessing_fit_fraction = 1.0
+    preprocessing_fit_fraction = 0.7
     num_train_epochs = 0
 
     use_targets_as_features = True

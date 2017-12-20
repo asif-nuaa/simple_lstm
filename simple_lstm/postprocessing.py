@@ -93,9 +93,10 @@ class PostProcessing:
         # Restore the original scale of the valid predictions
         num_predictions = len(mean_predictions)
         for i in range(num_predictions):
-            pred = mean_predictions[i].copy()
+            pred = mean_predictions[i]
             if pred is None:
                 continue
+            pred = pred.copy()
 
             start_time_index = prediction_evaluation_start_indices[i]
 
