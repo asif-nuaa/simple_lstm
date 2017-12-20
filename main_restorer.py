@@ -74,10 +74,13 @@ if __name__ == '__main__':
     print("Using checkpoint {}".format(last_checkpoint_file))
 
     lstm = SimpleLSTM()
-    lstm.encoding_units = [32, 32, 32]
-    lstm.decoding_units = [32, 32, 32]
-    lstm.look_back = 36
-    lstm.look_front = 12
+    num_days_look_back = 2
+    num_days_look_front = 1
+	
+    num_samples_per_hour = 2
+	
+    lstm.look_back = num_days_look_back * 24 * num_samples_per_hour
+    lstm.look_front = num_days_look_front * 24 * num_samples_per_hour
     dataset = load_dataset(use_csv=True, csv_file_name="oasi")  # type: Dataset
 
     train_fraction = 0.01

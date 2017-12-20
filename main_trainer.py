@@ -60,16 +60,12 @@ def preprocess_dataset(dataset: Dataset, data_transformers: list,
 if __name__ == '__main__':
 
     lstm = SimpleLSTM()
-    lstm.encoding_units = [32, 32, 32]
-    lstm.decoding_units = [32, 32, 32]
-    lstm.look_back = 36
-    lstm.look_front = 12
     dataset = load_dataset(use_csv=True, csv_file_name="oasi")  # type: Dataset
 
     train_fraction = 0.7
     test_fraction = 1.0 - train_fraction
     preprocessing_fit_fraction = train_fraction
-    num_train_epochs = 0
+    num_train_epochs = 100
 
     use_targets_as_features = True
     if use_targets_as_features:
